@@ -619,41 +619,61 @@ function VideoCard({ video: v, active, nearby, index, patch }) {
   const resumed = useRef(false);
   useEffect(() => {
     const video = ref.current;
-    if (!video || !nearby || !v.hls_url) return;
+    if (!video || !nearby) return;
     let hls,
+      cancelled = false,
+      connected = false;
+    const connect = () => {
+      if (connected || !pageIsActive()) return;
+      connected = true;
       cancelled = false;
-    if (video.canPlayType("application/vnd.apple.mpegurl"))
-      video.src = v.hls_url;
-    else
-      import("hls.js")
-        .then(({ default: Hls }) => {
-          if (cancelled) return;
-          if (Hls.isSupported()) {
-            hls = new Hls({
-              enableWorker: false,
-              startLevel: 0,
-              maxBufferLength: 10,
-              maxMaxBufferLength: 20,
-            });
-            hls.loadSource(v.hls_url);
-            hls.attachMedia(video);
-            hls.on(Hls.Events.ERROR, (_, d) => {
-              if (d.fatal) {
-                hls.destroy();
-                video.src = v.video_url;
-                video.play().catch(() => {});
-              }
-            });
-          } else video.src = v.video_url;
-        })
-        .catch(() => {
-          if (!cancelled) video.src = v.video_url;
-        });
-    return () => {
-      cancelled = true;
-      hls?.destroy();
+      if (!v.hls_url) video.src = v.video_url;
+      else if (video.canPlayType("application/vnd.apple.mpegurl"))
+        video.src = v.hls_url;
+      else
+        import("hls.js")
+          .then(({ default: Hls }) => {
+            if (cancelled || !pageIsActive()) return;
+            if (Hls.isSupported()) {
+              hls = new Hls({
+                enableWorker: false,
+                startLevel: 0,
+                maxBufferLength: 10,
+                maxMaxBufferLength: 20,
+              });
+              hls.loadSource(v.hls_url);
+              hls.attachMedia(video);
+              hls.on(Hls.Events.ERROR, (_, d) => {
+                if (d.fatal) {
+                  hls.destroy();
+                  video.src = v.video_url;
+                  video.play().catch(() => {});
+                }
+              });
+            } else video.src = v.video_url;
+          })
+          .catch(() => {
+            if (!cancelled && pageIsActive()) video.src = v.video_url;
+          });
     };
-  }, [nearby, v.id, v.hls_url]);
+    const disconnect = () => {
+      cancelled = true;
+      connected = false;
+      hls?.destroy();
+      hls = undefined;
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    };
+    connect();
+    window.addEventListener("pagehide", disconnect);
+    window.addEventListener("pageshow", connect);
+    return () => {
+      window.removeEventListener("pagehide", disconnect);
+      window.removeEventListener("pageshow", connect);
+      disconnect();
+    };
+  }, [nearby, v.id, v.hls_url, v.video_url]);
   useEffect(() => {
     if (ref.current?.textTracks?.[0])
       ref.current.textTracks[0].mode = captionsOn ? "showing" : "hidden";
@@ -798,7 +818,8 @@ function VideoCard({ video: v, active, nearby, index, patch }) {
           }}
           onLoadedData={() => {
             setBuffering(false);
-            if (active) ref.current?.play().catch(() => setNeedsPlay(true));
+            if (active && pageIsActive())
+              ref.current?.play().catch(() => setNeedsPlay(true));
           }}
           onError={() => {
             if (nearby) setPlayError(true);

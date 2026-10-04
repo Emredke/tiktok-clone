@@ -137,6 +137,9 @@ test("first adventure, unlocked passport, and an original-film community challen
   await page.getByLabel("Generate speech captions", { exact: true }).uncheck();
   await page.getByRole("button", { name: "Post video", exact: true }).click();
   await expect(page).toHaveURL(/\/v\//, { timeout: 90000 });
+  await expect
+    .poll(() => page.locator(".video-card video").evaluate((v) => v.readyState))
+    .toBeGreaterThan(2);
   await page.goto("/challenges");
   await page
     .getByRole("button", { name: "Add to the showcase", exact: true })
@@ -187,17 +190,14 @@ test("private invite, feedback, triage, and honest iPhone device checklist", asy
     hasTouch: info.project.use.hasTouch,
   });
   const tester = await invited.newPage();
-  await member(invited);
+  const invitee = await member(invited);
+  const note = `A private suggestion from ${invitee.name}: I loved the passport.`;
   await tester.goto(url);
   await tester
     .getByRole("button", { name: "Accept your invitation", exact: true })
     .click();
   await expect(tester).toHaveURL(/\/beta$/);
-  await tester
-    .getByLabel("Your field note", { exact: true })
-    .fill(
-      `A private suggestion from ${info.project.name}: I loved the passport.`,
-    );
+  await tester.getByLabel("Your field note", { exact: true }).fill(note);
   await tester
     .getByRole("button", { name: "Send your note", exact: true })
     .click();
@@ -217,7 +217,7 @@ test("private invite, feedback, triage, and honest iPhone device checklist", asy
   await page.reload();
   const feedback = page
     .locator(".beta-admin .feedback-note")
-    .filter({ hasText: `A private suggestion from ${info.project.name}` });
+    .filter({ hasText: note });
   await feedback.getByRole("combobox").selectOption("reviewing");
   await tester.reload();
   await expect(tester.locator(".beta-history .note-status")).toHaveText(
