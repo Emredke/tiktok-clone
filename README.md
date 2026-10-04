@@ -15,7 +15,7 @@ npm run captions:setup   # Python 3.9+, local automatic speech captions
 npm run dev
 ```
 
-Open **http://localhost:5173**. The API runs on port 3001. First startup automatically creates the schema and seeds 24 fictional creators, 36 original seven-second vertical videos, 576 relational likes, 144 comments/replies, bookmarks, shares, views, and follows. Generating the clips takes approximately 30–90 seconds depending on hardware. Startup also imports 13 credited real clips in the background. Startup is idempotent; subsequent runs preserve all data.
+Open **http://localhost:5173**. The API runs on port 3001. First startup automatically creates the schema and seeds 24 fictional creators, 36 original seven-second vertical videos, 576 relational likes, 144 comments/replies, bookmarks, shares, views, and follows. Generating the clips takes approximately 30–90 seconds depending on hardware. Startup also imports 300 credited real clips in the background. Startup is idempotent; subsequent runs preserve all data.
 
 For a single-server local preview of the compiled app:
 
@@ -59,7 +59,7 @@ All seeded creators are explicitly fictional. **Demo login is disabled in produc
 - Timed text overlays, speed/rotation/framing edits, local automatic speech captions, and adaptive HLS playback.
 - Permission-controlled duets/remixes with original links and credit preservation.
 - Staff moderation queue, content removal, timed suspension/restoration, and audit history.
-- A credited, reproducibly imported collection of 13 openly licensed real videos.
+- A credited, reproducibly imported collection of 300 openly licensed real videos.
 
 ## Architecture
 
@@ -220,12 +220,14 @@ There is no public role-assignment endpoint or default production administrator.
 
 ### Real video collection and credits
 
-Startup now imports **13 real clips** from Wikimedia Commons in the background: wildlife, waterfalls, ocean footage, cooking, and robotics. These are individually selected **CC0 or CC BY 4.0** files. `scripts/open-videos.json` preserves the exact file URL, description page, original author, license link, retrieval date, and transformations. Clips are shortened to at most twelve seconds, resized/transcoded, and have audio removed. `Velo Open Archive` is a Velo-operated collection, not an account impersonating the original creators. Imported videos start with zero fabricated likes, comments, views, or followers. Credits are visible on each video and in its options and survive remixing.
+Startup now imports **300 real clips** from Wikimedia Commons in the background: wildlife, landscapes, travel, sports, cooking, robotics, and science. These are individually selected **CC0 or CC BY** files; each entry preserves its specific license version. `scripts/open-videos.json` preserves the exact file URL, description page, original author, license link, retrieval date, and transformations. Clips are shortened to at most twelve seconds, resized/transcoded, and have audio removed. `Velo Open Archive` is a Velo-operated collection, not an account impersonating the original creators. Imported videos start with zero fabricated likes, comments, views, or followers. Credits are visible on each video and in its options and survive remixing.
 
 ```sh
 npm run import:videos       # Idempotent manual import / retry
+# Optional: 1–4 concurrent workers (default 2)
+IMPORT_CONCURRENCY=4 npm run import:videos
 ```
 
-Set `IMPORT_REAL_VIDEOS=0` to disable automatic import. Fresh installations need outbound access to `upload.wikimedia.org`; an unavailable source is logged and skipped while the app remains usable. Run the import again to retry. Binary video files stay in private storage and out of Git; the repository contains the reproducible curated manifest/importer. Existing imported files remain usable without network access. Before adding sources, verify each file's own rights and attribution requirements; the collection manifest's entries do not grant rights to other uploads. See [Wikimedia reuse guidance](https://commons.wikimedia.org/wiki/Commons:Reusing_content_outside_Wikimedia).
+Set `IMPORT_REAL_VIDEOS=0` to disable automatic import. A first import of the full library takes several minutes, depending on bandwidth and hardware, while the app stays usable. Fresh installations need outbound access to `upload.wikimedia.org`; an unavailable source is logged and skipped while the app remains usable. Downloads stream to disk with a 100 MB cap, four bounded attempts for temporary failures, and a cross-process lock that prevents overlapping startup/manual imports. Reruns skip complete clips, repair missing local files or adaptive assets, and preserve moderation/privacy decisions. `data/imports/last-run.json` records the latest totals. Run the import again to retry. `scripts/discover-videos.py` optionally retrieves metadata candidates; review candidates before adding them to the curated manifest. Binary video files stay in private storage and out of Git; the repository contains the reproducible curated manifest/importer. Existing imported files remain usable without network access. Before adding sources, verify each file's own rights and attribution requirements; the collection manifest's entries do not grant rights to other uploads. See [Wikimedia reuse guidance](https://commons.wikimedia.org/wiki/Commons:Reusing_content_outside_Wikimedia).
 
 Back up raw uploads, encoded media, playlists/segments, and SQLite together. Deleted database rows revoke mediated access immediately, while physical orphan cleanup remains an operator task; include `media_jobs.raw_location` and `video_assets.location` when identifying live objects. Captions, interests, feedback, follower history, job state, and moderation history are stored in additive migrations that preserve existing accounts and content.

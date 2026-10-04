@@ -290,7 +290,13 @@ export async function produce(path, id, o, progress, user) {
     await Promise.all(temporary.map((p) => unlink(p).catch(() => {})));
   }
 }
-export async function buildHls(path, id, temporary = [], progress = () => {}) {
+export async function buildHls(
+  path,
+  id,
+  temporary = [],
+  progress = () => {},
+  threads = 0,
+) {
   const variants = [];
   for (const [n, w, h, bandwidth] of [
     ["low", 240, 426, 350000],
@@ -307,6 +313,8 @@ export async function buildHls(path, id, temporary = [], progress = () => {}) {
       `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,setsar=1`,
       "-c:v",
       "libx264",
+      "-threads",
+      String(threads),
       "-preset",
       "veryfast",
       "-b:v",

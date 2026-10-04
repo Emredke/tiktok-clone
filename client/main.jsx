@@ -1507,6 +1507,9 @@ function Profile({ username }) {
         <span>
           <strong>{format(p.total_likes)}</strong>Likes
         </span>
+        <span>
+          <strong>{format(p.video_count ?? 0)}</strong>Videos
+        </span>
       </div>
       <p className="profile-bio">
         {p.bio || "A new perspective. A story to tell."}

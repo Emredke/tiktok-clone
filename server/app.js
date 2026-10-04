@@ -260,6 +260,11 @@ function profileInfo(id, viewer) {
   if (!p || blocked(id, viewer)) return null;
   return {
     ...p,
+    video_count: all(
+      `SELECT v.parent_id FROM videos v WHERE v.user_id=? AND ${visibility(viewer)}`,
+      id,
+    ).filter((v) => !v.parent_id || ancestryVisible(v.parent_id, viewer))
+      .length,
     followers: one("SELECT count(*) n FROM follows WHERE following_id=?", id).n,
     following: one("SELECT count(*) n FROM follows WHERE follower_id=?", id).n,
     total_likes: one(
@@ -906,10 +911,8 @@ app.get("/api/discover", (req, res) => {
   );
   res.json({
     profiles: people,
-    videos: (q ? matches : rankVideos(matches, null)).slice(
-      offset,
-      offset + 24,
-    ),
+    // Keep the discovery order stable as the library spans multiple pages.
+    videos: matches.slice(offset, offset + 24),
     hashtags: trending,
     hasMore: matches.length > offset + 24 || people.length === 20,
   });
