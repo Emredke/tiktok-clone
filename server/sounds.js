@@ -278,11 +278,9 @@ export function installSounds(app) {
           location,
           duration,
         );
-        res
-          .status(201)
-          .json({
-            voiceover: { id, duration, url: `/api/voiceovers/${id}/audio` },
-          });
+        res.status(201).json({
+          voiceover: { id, duration, url: `/api/voiceovers/${id}/audio` },
+        });
       } catch (e) {
         if (!e.status) e.status = 400;
         throw e;

@@ -1,3 +1,4 @@
+import { installQuests } from "./quests.js";
 import { installSounds } from "./sounds.js";
 import { installPush } from "./push.js";
 import { installCommunity } from "./community.js";
@@ -1209,6 +1210,7 @@ app.get("/api/avatars/:id", async (req, res) => {
   res.sendFile(resolve(mediaDir, basename(p.avatar)));
 });
 installSounds(app);
+installQuests(app, { uid, visibleVideo });
 installPush(app, { validate, uid });
 installCommunity(app, { validate, uid, visibleVideo, videos });
 installFeatures(app, {

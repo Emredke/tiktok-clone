@@ -1,6 +1,6 @@
 # Velo
 
-**Find your next obsession.** A working, mobile-first short-video social network with a React interface, Express API, relational database, authenticated video delivery, and S3-compatible object storage for production.
+**The curiosity club.** A working, mobile-first short-video social network with a React interface, Express API, relational database, authenticated video delivery, and S3-compatible object storage for production.
 
 This repository includes the original brief in [docs/PRODUCT_REQUIREMENTS.md](docs/PRODUCT_REQUIREMENTS.md). It is a runnable application, not a static design. Production deployment requires your own hosting, email delivery, and object-storage configuration.
 
@@ -43,8 +43,10 @@ All seeded creators are explicitly fictional. **Demo login is disabled in produc
 
 ## What works
 
-- Autoplaying, looping, snap-scrolling feed; inactive videos pause; tap to mute/unmute; double tap to like; buffering and retry states; keyboard navigation on desktop; nearby video preloading.
-- For You ranking from real activity and Following feed from persisted relationships; eight-video feed pages with exclusions.
+- An editorial discovery home with topic trails, a screening shelf, Club picks and Your circle, explicit pagination, and no homepage autoplay.
+- A dedicated screening room with native video controls, separate field notes and licensing credits, horizontal social actions, and related films.
+- Private weekly quests for saving three topics, curating a collection of two creators, and publishing an original. Server-validated claims award XP once per week, unlock permanent passport stamps, and advance levels every 200 XP. Imports and remixes do not earn creator rewards; no rewards for watch time or messaging, no public leaderboard, and no streak penalties.
+- Club picks ranking from real activity and Your circle from persisted follow relationships; eight-film pages with exclusions.
 - Signup, login, logout, persistent sessions, email verification/resend, forgot password, one-time password reset.
 - Editable profiles, photo uploads, follower/following lists, uploaded/liked videos, private saved collection.
 - Optimistic video likes and bookmarks, follows, comment/reply threads, comment likes, and author-only deletion.
@@ -182,7 +184,7 @@ Static-only hosting such as GitHub Pages cannot run this backend. This repositor
 
 ## Creator Studio and community features
 
-New accounts choose interests during onboarding; these persist in `interests` and affect the For You score. Feed preferences let users edit topics and undo hidden videos, creators, or categories. Video options explain one applicable ranking signal, offer “Not interested,” and open duets/remixes. A small editorial boost helps people discover the credited open collection; creator/category diversity prevents a single collection from occupying consecutive slots. Following retains chronological order.
+New accounts choose interests during onboarding; these persist in `interests` and affect the Club picks score. Feed preferences let users edit topics and undo hidden videos, creators, or categories. Video options explain one applicable ranking signal, offer “Not interested,” and open duets/remixes. A small editorial boost helps people discover the credited open collection; creator/category diversity prevents a single collection from occupying consecutive slots. Your circle retains chronological order.
 
 **Creator Studio** is available from the sidebar and your profile, including on mobile. It lists drafts, queued/processing/failed uploads, progress, retry controls, caption editing, and 7/30/90-day analytics. Analytics measure playback events, seconds watched, average watch time, completed views, daily views, per-video performance, and new/net followers. One view represents a flushed viewing session rather than a deduplicated person. Generated demo watch events are explicitly excluded from Studio watch metrics. Historical follows created before this update are not included in follower-change history.
 

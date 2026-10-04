@@ -1,1 +1,17 @@
-{"name":"Velo","short_name":"Velo","start_url":"/","scope":"/","display":"standalone","background_color":"#0a0a0f","theme_color":"#0a0a0f","icons":[{"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any"}]}
+{
+  "name": "Velo · The curiosity club",
+  "short_name": "Velo",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f5ed",
+  "theme_color": "#f6f5ed",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

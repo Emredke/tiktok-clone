@@ -4,7 +4,7 @@ The app is ready to deploy with the included Dockerfile and Render Blueprint (`r
 
 ## Hosting and domain
 
-1. Connect Render to `Emredke/tiktok-clone`, create a Blueprint from `render.yaml`, and keep one service instance. The persistent `/app/data` disk holds SQLite, VAPID keys, importer checkpoints, and local backup copies. Do not use an ephemeral disk or scale this SQLite deployment across instances.
+1. Connect Render to `Emredke/velo`, create a Blueprint from `render.yaml`, and keep one service instance. The persistent `/app/data` disk holds SQLite, VAPID keys, importer checkpoints, and local backup copies. Do not use an ephemeral disk or scale this SQLite deployment across instances.
 2. Set `APP_ORIGIN` to the service's exact HTTPS address, with no trailing slash. Add your own domain in Render and set the same origin afterward. This address is used for verification/reset links and request protection.
 3. Use “After CI Checks Pass” for automatic deployments. Disk-backed deploys can briefly interrupt connections; clients reconnect automatically. The app's container bundles FFmpeg and the local speech model.
 4. Production starts without fictional demo accounts; the credited 300-video collection imports in the background. An existing development database retains its existing demo users, whose login is already disabled in production. To migrate your local collection, preserve its database and upload all media objects, updating location references; alternatively, let the importer rebuild the collection directly into the production bucket.

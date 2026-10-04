@@ -19,7 +19,9 @@ test("real user flow: signup → verify → watch → interact → search → pr
     email = `${name}@example.invalid`,
     password = "FlowPassword!2026";
   await page.goto("/");
+  await page.locator(".featured-film").click();
   const first = page.locator(".video-card").first();
+  const initialId = await first.getAttribute("data-video-id");
   const video = first.locator("video");
   await expect
     .poll(() => video.evaluate((v) => v.readyState))
@@ -57,6 +59,7 @@ test("real user flow: signup → verify → watch → interact → search → pr
     await page
       .getByRole("button", { name: "Start exploring", exact: true })
       .click();
+  await page.goto(`/v/${initialId}`);
   const card = page.locator(".video-card").first();
   const id = await card.getAttribute("data-video-id");
   const creator = (await card.locator(".creator-name").innerText())
@@ -85,20 +88,22 @@ test("real user flow: signup → verify → watch → interact → search → pr
     page.getByText(`A real browser-tested comment ${name}`, { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Close", exact: true }).click();
-  await page.getByRole("button", { name: "Following", exact: true }).click();
-  await expect(page.locator(".video-card")).not.toHaveCount(0);
-  await expect(
-    page.locator(".video-card").first().locator(".creator-name"),
-  ).toContainText(creator);
-  await page.getByRole("button", { name: "For You", exact: true }).click();
-  await expect(page.locator(".video-card").first()).toBeVisible();
-  const current = page.locator(".video-card").first().locator("video");
-  if (info.project.name === "mobile") {
-    await page.locator(".feed-scroller").hover();
-    await page.mouse.wheel(0, 800);
-  } else
-    await page.getByRole("button", { name: "Next video", exact: true }).click();
-  await expect.poll(() => current.evaluate((v) => v.paused)).toBe(true);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Your circle", exact: true }).click();
+  await expect(page.locator(".featured-film .discovery-copy")).toContainText(
+    creator,
+  );
+  await page.getByRole("button", { name: "Club picks", exact: true }).click();
+  await page.locator(".featured-film").click();
+  const previousId = await page
+    .locator(".video-card")
+    .getAttribute("data-video-id");
+  await page.getByRole("button", { name: "Next video", exact: true }).click();
+  await expect(page.locator(".video-card")).not.toHaveAttribute(
+    "data-video-id",
+    previousId,
+  );
+  await expect(page.locator(".video-card")).toHaveCount(1);
   await page.goto("/discover");
   await page
     .getByRole("textbox", { name: "Search", exact: true })
@@ -176,6 +181,7 @@ test("real user flow: signup → verify → watch → interact → search → pr
   await page.goto(`/@${name}`);
   await page.getByRole("button", { name: "Log out", exact: true }).click();
   await expect(page).toHaveURL("http://localhost:3101/");
+  await page.locator(".featured-film").click();
   await page
     .locator(".video-card")
     .first()

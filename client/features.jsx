@@ -211,7 +211,7 @@ export function Interests({ app, onDone, onboarding = false }) {
       )}
       {!onboarding && (
         <>
-          <h3>Hidden from For You</h3>
+          <h3>Hidden from Club picks</h3>
           <p className="small-note">
             You can bring a video, creator, or category back at any time.
           </p>
@@ -253,7 +253,7 @@ export function VideoExtras({ app, video: v, onClose }) {
   const feedback = (kind, target) =>
     requireUser(async () => {
       await api("/feedback", { kind, target, active: true });
-      notify("Your For You feed has been updated.");
+      notify("Your Club picks shelf has been updated.");
       onClose();
       navigate("/?feed=" + Date.now());
     });
@@ -263,7 +263,7 @@ export function VideoExtras({ app, video: v, onClose }) {
         <strong>Why this video?</strong>
         <p>
           {v.reason ||
-            "This is a direct video view. Personalized explanations appear with recommendations in For You."}
+            "This is a direct video view. Personalized explanations appear with recommendations in Club picks."}
         </p>
         <small>
           Ranking also considers freshness, viewing history, follows, and
@@ -347,7 +347,7 @@ export function VideoExtras({ app, video: v, onClose }) {
           See less {v.category}
         </button>
         <button onClick={() => feedback("creator", v.user_id)}>
-          Hide this creator from For You
+          Hide this creator from Club picks
         </button>
       </div>
       {v.user_id === user?.user_id && (

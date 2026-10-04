@@ -1,3 +1,4 @@
+import { Explore, Quests } from "./explore.jsx";
 import {
   Library,
   Chat,
@@ -23,7 +24,7 @@ import React, {
 } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  Home,
+  Compass,
   Search,
   Plus,
   Inbox,
@@ -62,12 +63,13 @@ import {
 } from "lucide-react";
 import { api, uploadFile } from "./api";
 import "./style.css";
+import "./field.css";
 const Context = createContext();
 const useApp = () => useContext(Context);
 const icons = {
-  home: Home,
-  discover: Search,
-  create: Plus,
+  home: Compass,
+  quests: Flag,
+  create: Camera,
   inbox: Inbox,
   profile: User,
 };
@@ -251,6 +253,7 @@ function App() {
   };
   const pathname = route.split("?")[0];
   let page = [
+    "/quests",
     "/studio",
     "/moderation",
     "/preferences",
@@ -259,15 +262,17 @@ function App() {
     "/settings",
   ].includes(pathname)
     ? pathname.slice(1)
-    : pathname === "/discover"
-      ? "discover"
-      : pathname === "/create"
-        ? "create"
-        : pathname === "/inbox"
-          ? "inbox"
-          : pathname.startsWith("/@")
-            ? "profile"
-            : "home";
+    : pathname.startsWith("/v/")
+      ? "cinema"
+      : pathname === "/discover"
+        ? "discover"
+        : pathname === "/create"
+          ? "create"
+          : pathname === "/inbox"
+            ? "inbox"
+            : pathname.startsWith("/@")
+              ? "profile"
+              : "home";
   const nav = (page) =>
     page === "profile"
       ? user
@@ -279,10 +284,13 @@ function App() {
       <div className="app">
         <aside className="sidebar">
           <button className="brand" onClick={() => navigate("/")}>
-            <span className="brand-mark">v</span>velo
-            <span className="brand-dot">.</span>
+            <span className="brand-mark">
+              <Compass size={24} />
+            </span>
+            velo
+            <span className="brand-dot">✦</span>
           </button>
-          <div className="sidebar-intro">Find your next obsession.</div>
+          <div className="sidebar-intro">The curiosity club.</div>
           <nav>
             {Object.entries(icons).map(([key, Icon]) => (
               <button
@@ -294,7 +302,9 @@ function App() {
                 <span>
                   {key === "create"
                     ? "Create"
-                    : key[0].toUpperCase() + key.slice(1)}
+                    : key === "home"
+                      ? "Explore"
+                      : key[0].toUpperCase() + key.slice(1)}
                 </span>
                 {key === "inbox" && unread > 0 && (
                   <span className="badge">{unread}</span>
@@ -344,29 +354,33 @@ function App() {
               </button>
             ) : (
               <>
-                <h3>Your people are here.</h3>
-                <p>Make it yours. Save what you love.</p>
+                <h3>Stay a little curious.</h3>
+                <p>Find new perspectives. Make your own.</p>
                 <button className="primary" onClick={() => setAuth("signup")}>
                   Join Velo <ArrowRight size={16} />
                 </button>
               </>
             )}
             <div className="sidebar-footer">
-              Original moments. Real connections.
+              A field guide to good things.
               <br />
               Velo © 2026 · Demo creators are fictional.
             </div>
           </div>
         </aside>
-        <main className={`main ${page === "home" ? "feed-main" : ""}`}>
+        <main className={`main ${page === "cinema" ? "cinema-main" : ""}`}>
           {!ready ? (
             <div className="loading-page">
               <Spinner />
             </div>
           ) : page === "home" ? (
+            <Explore app={value} />
+          ) : page === "quests" ? (
+            <Quests app={value} />
+          ) : page === "cinema" ? (
             <Feed
               key={route + "-" + (user?.user_id || "guest")}
-              videoId={pathname.startsWith("/v/") ? pathname.slice(3) : null}
+              videoId={pathname.slice(3)}
             />
           ) : page === "library" ? (
             <Library app={value} />
@@ -403,14 +417,18 @@ function App() {
               aria-label={
                 key === "create"
                   ? "Create video"
-                  : key[0].toUpperCase() + key.slice(1)
+                  : key === "home"
+                    ? "Explore"
+                    : key[0].toUpperCase() + key.slice(1)
               }
               onClick={() => nav(key)}
             >
               <Icon size={key === "create" ? 28 : 23} />
-              {key !== "create" && (
-                <span>{key[0].toUpperCase() + key.slice(1)}</span>
-              )}
+              <span>
+                {key === "home"
+                  ? "Explore"
+                  : key[0].toUpperCase() + key.slice(1)}
+              </span>
               {key === "inbox" && unread > 0 && <i />}
             </button>
           ))}
@@ -441,189 +459,91 @@ function App() {
   );
 }
 function Feed({ videoId }) {
-  const { user, run, notify, navigate } = useApp();
-  const [mode, setMode] = useState("foryou"),
-    [items, setItems] = useState([]),
-    [active, setActive] = useState(0),
-    [loading, setLoading] = useState(true),
-    [more, setMore] = useState(true),
-    [error, setError] = useState("");
-  const scroller = useRef(),
-    busy = useRef(false),
-    seen = useRef([]),
-    epoch = useRef(0);
-  const load = useCallback(
-    async (reset = false) => {
-      if (busy.current && !reset) return;
-      const version = reset ? ++epoch.current : epoch.current;
-      busy.current = true;
-      setLoading(true);
-      setError("");
-      if (reset) {
-        seen.current = [];
-        setItems([]);
-        setActive(0);
-        scroller.current?.scrollTo({ top: 0 });
-      }
-      try {
-        let list = [],
-          hasMore = false;
-        if (videoId && reset) {
-          const d = await api(`/videos/${videoId}`);
-          list = [d.video];
-        } else {
-          const d = await api(
-            `/feed?mode=${mode}&exclude=${seen.current.join(",")}`,
-          );
-          list = d.videos;
-          hasMore = d.hasMore;
-        }
-        if (version !== epoch.current) return;
-        const unique = list.filter((v) => !seen.current.includes(v.id));
-        seen.current.push(...unique.map((v) => v.id));
-        setItems((v) => (reset ? unique : [...v, ...unique]));
-        setMore(hasMore);
-      } catch (e) {
-        if (version === epoch.current) {
-          setError(e.message);
-          notify(e.message);
-        }
-      } finally {
-        if (version === epoch.current) {
-          busy.current = false;
-          setLoading(false);
-        }
-      }
-    },
-    [mode, videoId, notify],
-  );
+  const app = useApp();
+  const { navigate, notify } = app;
+  const [video, setVideo] = useState(null),
+    [related, setRelated] = useState([]),
+    [error, setError] = useState(""),
+    [revision, setRevision] = useState(0);
   useEffect(() => {
-    load(true);
-  }, [load]);
-  useEffect(() => {
-    const root = scroller.current;
-    if (!root) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries)
-          if (e.isIntersecting && e.intersectionRatio > 0.6)
-            setActive(Number(e.target.dataset.index));
-      },
-      { root, threshold: [0.6, 0.8] },
-    );
-    root.querySelectorAll(".video-card").forEach((n) => observer.observe(n));
-    return () => observer.disconnect();
-  }, [items.length]);
-  useEffect(() => {
-    if (active >= items.length - 3 && items.length && more) load();
-  }, [active, items.length, more, load]);
-  const step = (direction) =>
-    scroller.current?.children[
-      Math.max(0, Math.min(items.length - 1, active + direction))
-    ]?.scrollIntoView({ behavior: "smooth", block: "start" });
-  useEffect(() => {
-    const handler = (e) => {
-      if (
-        ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName) ||
-        document.querySelector(".modal-backdrop")
-      )
-        return;
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        e.preventDefault();
-        step(e.key === "ArrowDown" ? 1 : -1);
-      }
+    let alive = true;
+    api(`/videos/${videoId}`)
+      .then((d) => {
+        if (alive) setVideo(d.video);
+      })
+      .catch((e) => {
+        if (alive) setError(e.message);
+      });
+    api(`/feed?exclude=${videoId}`)
+      .then((d) => {
+        if (alive) setRelated(d.videos);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
     };
-    addEventListener("keydown", handler);
-    return () => removeEventListener("keydown", handler);
-  }, [active, items.length]);
+  }, [videoId, revision]);
   const patch = (id, changes) =>
-    setItems((v) =>
-      v.map((item) => (item.id === id ? { ...item, ...changes } : item)),
-    );
+    setVideo((old) => (old?.id === id ? { ...old, ...changes } : old));
   return (
-    <div className="feed-layout">
-      <section className="video-stage">
-        <header className="feed-header">
-          <span className="mobile-brand">velo.</span>
-          <div className="feed-tabs">
-            <button
-              className={mode === "following" ? "selected" : ""}
-              onClick={() => setMode("following")}
-            >
-              Following
-            </button>
-            <button
-              className={mode === "foryou" ? "selected" : ""}
-              onClick={() => setMode("foryou")}
-            >
-              For You
+    <section className="screening-page">
+      <header className="screening-header">
+        <button className="secondary" onClick={() => navigate("/")}>
+          <ChevronLeft size={17} /> Back to the club
+        </button>
+        <span className="eyebrow">THE SCREENING ROOM</span>
+        {related[0] && (
+          <button
+            className="secondary"
+            aria-label="Next video"
+            onClick={() => navigate(`/v/${related[0].id}`)}
+          >
+            Next film <ArrowRight size={17} />
+          </button>
+        )}
+      </header>
+      {error ? (
+        <Empty title="This film is unavailable" body={error}>
+          <button
+            className="primary"
+            onClick={() => {
+              setError("");
+              setRevision((v) => v + 1);
+            }}
+          >
+            Try again
+          </button>
+        </Empty>
+      ) : !video ? (
+        <div className="loading-page">
+          <Spinner />
+        </div>
+      ) : (
+        <VideoCard video={video} active nearby index={0} patch={patch} />
+      )}
+      {!!related.length && (
+        <>
+          <div className="section-heading">
+            <div>
+              <span className="eyebrow">TAKE ANOTHER TURN</span>
+              <h2>More to be curious about.</h2>
+            </div>
+            <button onClick={() => navigate("/quests")}>
+              <Flag size={17} /> Your quests
             </button>
           </div>
-          <IconButton
-            icon={Search}
-            label="Search videos"
-            className="mobile-search"
-            onClick={() => navigate("/discover")}
-          />
-        </header>
-        <div className="feed-scroller" ref={scroller} aria-label="Video feed">
-          {items.map((v, i) => (
-            <VideoCard
-              key={v.id}
-              video={v}
-              active={active === i}
-              nearby={Math.abs(active - i) <= 1}
-              index={i}
-              patch={patch}
-            />
-          ))}
-          {!items.length && !loading && (
-            <Empty
-              title={
-                error
-                  ? "Unable to load videos"
-                  : mode === "following"
-                    ? "A feed full of your favorites"
-                    : "Nothing here yet"
-              }
-              body={
-                error || "Follow a creator to see their latest videos here."
-              }
-            >
-              {error && (
-                <button className="primary" onClick={() => load(true)}>
-                  Try again
-                </button>
-              )}
-            </Empty>
-          )}
-          {loading && !items.length && (
-            <div className="feed-loading">
-              <Spinner />
-              <span>Finding your next obsession…</span>
-            </div>
-          )}
-          {loading && items.length > 0 && (
-            <div className="load-more">
-              <Spinner />
-            </div>
-          )}
-        </div>
-        <div className="feed-arrows">
-          <IconButton
-            icon={ChevronUp}
-            label="Previous video"
-            onClick={() => step(-1)}
-          />
-          <IconButton
-            icon={ChevronDown}
-            label="Next video"
-            onClick={() => step(1)}
-          />
-        </div>
-      </section>
-      <FeedAside active={items[active]} />
-    </div>
+          <div className="screening-shelf">
+            {related.slice(0, 4).map((v) => (
+              <button key={v.id} onClick={() => navigate(`/v/${v.id}`)}>
+                <img src={v.thumbnail_url} alt="" loading="lazy" />
+                <span className="eyebrow">{v.category}</span>
+                <strong>{v.caption.split("#")[0]}</strong>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 function VideoCard({ video: v, active, nearby, index, patch }) {
@@ -634,7 +554,6 @@ function VideoCard({ video: v, active, nearby, index, patch }) {
   const [muted, setMuted] = useState(true),
     [buffering, setBuffering] = useState(true),
     [needsPlay, setNeedsPlay] = useState(false),
-    [burst, setBurst] = useState(false),
     [busy, setBusy] = useState(false),
     [progress, setProgress] = useState(0),
     [playError, setPlayError] = useState(false);
@@ -789,130 +708,115 @@ function VideoCard({ video: v, active, nearby, index, patch }) {
       });
       patch(v.id, { following: d.profile.is_following });
     });
-  const tap = () => {
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      setMuted((m) => !m);
-      if (ref.current?.paused)
-        ref.current.play().catch(() => setNeedsPlay(true));
-    }, 230);
-  };
-  const doubleTap = () => {
-    clearTimeout(timer.current);
-    setBurst(true);
-    setTimeout(() => setBurst(false), 700);
-    like(true);
-  };
   return (
     <article className="video-card" data-index={index} data-video-id={v.id}>
-      <video
-        ref={ref}
-        src={nearby && !v.hls_url ? v.video_url : undefined}
-        poster={v.thumbnail_url}
-        loop
-        playsInline
-        muted={muted}
-        preload={active ? "auto" : nearby ? "auto" : "none"}
-        onClick={tap}
-        onDoubleClick={doubleTap}
-        onWaiting={() => setBuffering(true)}
-        onPlaying={() => {
-          setBuffering(false);
-          setNeedsPlay(false);
-        }}
-        onLoadedMetadata={(e) => {
-          if (resumed.current || location.pathname !== `/v/${v.id}`) return;
-          const position = Number(
-            new URLSearchParams(location.search).get("resume"),
-          );
-          if (Number.isFinite(position) && position > 0) {
-            e.currentTarget.currentTime = Math.min(
-              position,
-              Math.max(0, e.currentTarget.duration - 0.1),
+      <div className="cinema-media">
+        <video
+          controls
+          ref={ref}
+          src={nearby && !v.hls_url ? v.video_url : undefined}
+          poster={v.thumbnail_url}
+          loop
+          playsInline
+          muted={muted}
+          preload={active ? "auto" : nearby ? "auto" : "none"}
+          onWaiting={() => setBuffering(true)}
+          onPlaying={() => {
+            setBuffering(false);
+            setNeedsPlay(false);
+          }}
+          onLoadedMetadata={(e) => {
+            if (resumed.current || location.pathname !== `/v/${v.id}`) return;
+            const position = Number(
+              new URLSearchParams(location.search).get("resume"),
             );
-            resumed.current = true;
-          }
-        }}
-        onLoadedData={() => {
-          setBuffering(false);
-          if (active) ref.current?.play().catch(() => setNeedsPlay(true));
-        }}
-        onError={() => {
-          if (nearby) setPlayError(true);
-        }}
-        onPause={() => {
-          meter.current.last = 0;
-        }}
-        onTimeUpdate={updateMeter}
-      >
-        {v.captions_url && (
-          <track
-            kind="captions"
-            src={v.captions_url}
-            srcLang="en"
-            label="Speech captions"
-            default={captionsOn}
-          />
-        )}
-      </video>
-      <div className="video-shade" />
-      {buffering && active && !playError && (
-        <div className="video-spinner">
-          <Spinner />
-        </div>
-      )}
-      {needsPlay && active && (
-        <button
-          className="play-overlay"
-          aria-label="Play video"
-          onClick={() =>
-            ref.current?.play().catch(() => notify("Playback unavailable."))
-          }
+            if (Number.isFinite(position) && position > 0) {
+              e.currentTarget.currentTime = Math.min(
+                position,
+                Math.max(0, e.currentTarget.duration - 0.1),
+              );
+              resumed.current = true;
+            }
+          }}
+          onLoadedData={() => {
+            setBuffering(false);
+            if (active) ref.current?.play().catch(() => setNeedsPlay(true));
+          }}
+          onError={() => {
+            if (nearby) setPlayError(true);
+          }}
+          onPause={() => {
+            meter.current.last = 0;
+          }}
+          onTimeUpdate={updateMeter}
         >
-          <Play fill="white" size={42} />
-        </button>
-      )}
-      {playError && (
-        <div className="video-error">
-          <p>Playback unavailable</p>
+          {v.captions_url && (
+            <track
+              kind="captions"
+              src={v.captions_url}
+              srcLang="en"
+              label="Speech captions"
+              default={captionsOn}
+            />
+          )}
+        </video>
+        <div className="video-shade" />
+        {buffering && active && !playError && (
+          <div className="video-spinner">
+            <Spinner />
+          </div>
+        )}
+        {needsPlay && active && (
           <button
-            onClick={() => {
-              setPlayError(false);
-              ref.current?.load();
-              ref.current?.play().catch(() => {});
-            }}
+            className="play-overlay"
+            aria-label="Play video"
+            onClick={() =>
+              ref.current?.play().catch(() => notify("Playback unavailable."))
+            }
           >
-            Retry playback
-          </button>
-        </div>
-      )}
-      {burst && (
-        <Heart className="heart-burst" fill="#fff" strokeWidth={0} size={110} />
-      )}
-      <div className="video-top">
-        {v.captions_url && (
-          <button
-            className="caption-toggle"
-            aria-label="Toggle captions"
-            aria-pressed={captionsOn}
-            onClick={() => setCaptionsOn((x) => !x)}
-          >
-            CC
+            <Play fill="white" size={42} />
           </button>
         )}
-        <span className="original-label">
-          <span />{" "}
-          {v.source
-            ? "REAL FOOTAGE · OPEN ARCHIVE"
-            : v.demo
-              ? "VELO ORIGINALS"
-              : v.category.toUpperCase()}
-        </span>
-        <IconButton
-          icon={muted ? VolumeX : Volume2}
-          label={muted ? "Unmute video" : "Mute video"}
-          onClick={() => setMuted((m) => !m)}
-        />
+        {playError && (
+          <div className="video-error">
+            <p>Playback unavailable</p>
+            <button
+              onClick={() => {
+                setPlayError(false);
+                ref.current?.load();
+                ref.current?.play().catch(() => {});
+              }}
+            >
+              Retry playback
+            </button>
+          </div>
+        )}
+        <div className="video-top">
+          {v.captions_url && (
+            <button
+              className="caption-toggle"
+              aria-label="Toggle captions"
+              aria-pressed={captionsOn}
+              onClick={() => setCaptionsOn((x) => !x)}
+            >
+              CC
+            </button>
+          )}
+          <span className="original-label">
+            <span />{" "}
+            {v.source
+              ? "REAL FOOTAGE · OPEN ARCHIVE"
+              : v.demo
+                ? "VELO ORIGINALS"
+                : v.category.toUpperCase()}
+          </span>
+          <IconButton
+            icon={muted ? VolumeX : Volume2}
+            label={muted ? "Unmute video" : "Mute video"}
+            onClick={() => setMuted((m) => !m)}
+          />
+        </div>
+        <div className="play-progress" style={{ width: `${progress}%` }} />
       </div>
       <div className="video-actions">
         <div className="creator-follow">
@@ -927,7 +831,8 @@ function VideoCard({ video: v, active, nearby, index, patch }) {
               aria-label={v.following ? "Unfollow creator" : "Follow creator"}
               onClick={follow}
             >
-              {v.following ? <Check size={12} /> : <Plus size={14} />}
+              {v.following ? <Check size={14} /> : <Plus size={14} />}
+              <span>{v.following ? "Following" : "Follow"}</span>
             </button>
           )}
         </div>
@@ -937,39 +842,32 @@ function VideoCard({ video: v, active, nearby, index, patch }) {
           onClick={() => like()}
           disabled={busy}
         >
-          <Heart size={31} fill={v.liked ? "currentColor" : "white"} />
-          <span>{format(v.likes_count)}</span>
+          <Heart size={22} fill={v.liked ? "currentColor" : "none"} />
+          <span>Appreciate · {format(v.likes_count)}</span>
         </button>
         <button
           className="video-action"
           aria-label="Open comments"
           onClick={() => setModal({ type: "comments", video: v, patch })}
         >
-          <MessageCircle size={31} fill="white" />
-          <span>{format(v.comments_count)}</span>
+          <MessageCircle size={22} />
+          <span>Discuss · {format(v.comments_count)}</span>
         </button>
         <button
           className={`video-action ${v.saved ? "saved" : ""}`}
           aria-label={v.saved ? "Unsave video" : "Save video"}
           onClick={save}
         >
-          <Bookmark size={29} fill={v.saved ? "currentColor" : "white"} />
-          <span>{format(v.saves_count)}</span>
+          <Bookmark size={22} fill={v.saved ? "currentColor" : "none"} />
+          <span>Save · {format(v.saves_count)}</span>
         </button>
         <button
           className="video-action"
           aria-label="Share video"
           onClick={() => setModal({ type: "share", video: v, patch })}
         >
-          <Share2 size={30} />
-          <span>{format(v.shares_count)}</span>
-        </button>
-        <button
-          className="record-disc"
-          aria-label="Show creator profile"
-          onClick={() => navigate(`/@${v.username}`)}
-        >
-          <Music2 size={18} />
+          <Share2 size={22} />
+          <span>Share · {format(v.shares_count)}</span>
         </button>
       </div>
       <div className="video-caption">
@@ -1020,61 +918,7 @@ function VideoCard({ video: v, active, nearby, index, patch }) {
           />
         </div>
       </div>
-      <div className="play-progress" style={{ width: `${progress}%` }} />
     </article>
-  );
-}
-function FeedAside({ active }) {
-  const { navigate, run } = useApp();
-  const [tags, setTags] = useState([]);
-  useEffect(() => {
-    api("/discover")
-      .then((d) => setTags(d.hashtags.slice(0, 5)))
-      .catch(() => {});
-  }, []);
-  return (
-    <aside className="feed-aside">
-      <div className="eyebrow">THE DAILY SCROLL</div>
-      <h1>
-        A little
-        <br />
-        curiosity.
-        <br />
-        <em>A lot to love.</em>
-      </h1>
-      <p>
-        Good things happen when you
-        <br />
-        follow what moves you.
-      </p>
-      <div className="aside-divider" />
-      <div className="aside-label">
-        <Flame size={16} /> In the loop
-      </div>
-      {tags.map((t, i) => (
-        <button
-          className="trending-tag"
-          key={t.name}
-          onClick={() =>
-            navigate(`/discover?q=${encodeURIComponent("#" + t.name)}`)
-          }
-        >
-          <span className="tag-number">0{i + 1}</span>
-          <span>
-            <strong>#{t.name}</strong>
-            <small>{t.videos_count} videos</small>
-          </span>
-          <ArrowUpRight size={17} />
-        </button>
-      ))}
-      <div className="aside-note">
-        <span className="live-dot" /> MADE FOR YOUR KIND OF CURIOUS
-      </div>
-      <p className="demo-note">
-        Explore real footage with credits, original motion studies, and your
-        community’s moments. Add yours with Create.
-      </p>
-    </aside>
   );
 }
 function Discover() {
@@ -1138,7 +982,7 @@ function Discover() {
       </label>
       <div className="category-chips">
         <button className={!q ? "selected" : ""} onClick={() => setQ("")}>
-          For you
+          All topics
         </button>
         {config.categories.map((c) => (
           <button
@@ -1306,7 +1150,7 @@ function Auth({ mode, setMode, onClose }) {
         <h1>{titles[mode]}</h1>
         <p>
           {mode === "signup"
-            ? "Your next obsession is one scroll away."
+            ? "Your next creative adventure starts here."
             : "Your moments, your favorites, your community."}
         </p>
         <form onSubmit={submit} key={mode}>
@@ -2079,7 +1923,7 @@ function Create() {
                 <div className="upload-symbol">
                   <Upload size={30} />
                 </div>
-                <strong>Drop into the loop</strong>
+                <strong>Start a small story</strong>
                 <span>Select a video to get started</span>
                 <small>
                   MP4, MOV, WebM · up to 100 MB
