@@ -1,6 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { readdirSync, readFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { randomUUID, createHash } from "node:crypto";
 const deliverables = process.env.VELO_SCREENSHOT_DIR;
 function mail(email, purpose) {
   return readdirSync("data/mail")
@@ -212,11 +214,33 @@ test("camera recording produces a playable uploaded video", async ({
   context,
 }) => {
   await context.grantPermissions(["camera", "microphone"]);
-  await page.goto("/");
-  const login = await page.request.post("/api/auth/login", {
-    data: { email: "sports2@demo.velo.invalid", password: "VeloDemo!2026" },
-  });
-  expect(login.ok()).toBe(true);
+  // Camera coverage uses a verified session fixture; the full user flow above
+  // exercises sign-in without exhausting the production account-attempt limit.
+  const token = randomUUID();
+  const fixture = new DatabaseSync("data/e2e.sqlite");
+  try {
+    const user = fixture
+      .prepare("SELECT id FROM users WHERE email=?")
+      .get("sports2@demo.velo.invalid");
+    fixture
+      .prepare("INSERT INTO sessions VALUES(?,?,?)")
+      .run(
+        createHash("sha256").update(token).digest("hex"),
+        user.id,
+        Date.now() + 3600000,
+      );
+  } finally {
+    fixture.close();
+  }
+  await context.addCookies([
+    {
+      name: "velo_session",
+      value: token,
+      url: "http://localhost:3101",
+      httpOnly: true,
+      sameSite: "Lax",
+    },
+  ]);
   await page.goto("/create");
   if (
     await page

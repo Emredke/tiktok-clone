@@ -39,3 +39,7 @@ Run `npm run launch:check` in the configured production environment. It checks t
 - [Render deployment behavior](https://render.com/docs/deploys)
 - [Resend SMTP setup](https://resend.com/docs/send-with-smtp)
 - [Node SQLite online backups](https://nodejs.org/api/sqlite.html#sqlitebackupsource-db-path-options)
+
+## Founding-circle beta
+
+Use `BETA_INVITE_ONLY=1` to require single-use invitations for new accounts. Manage a cohort of up to ten from the admin host desk at `/beta`. This setting does not provision hosting or send invitations. See [the beta guide](docs/BETA_GUIDE.md) for recruitment, private feedback, and the iPhone 16 Pro/Android hands-on checklist.

@@ -1,3 +1,10 @@
+import {
+  PassportStudio,
+  Challenges,
+  BetaLab,
+  BetaInvite,
+  clubRefresh,
+} from "./club.jsx";
 import { Explore, Quests } from "./explore.jsx";
 import {
   Library,
@@ -61,9 +68,10 @@ import {
   Users,
   Sparkles,
 } from "lucide-react";
-import { api, uploadFile } from "./api";
+import { api, uploadFile, pageIsActive } from "./api";
 import "./style.css";
 import "./field.css";
+import "./universe.css";
 const Context = createContext();
 const useApp = () => useContext(Context);
 const icons = {
@@ -100,7 +108,7 @@ function Avatar({ person, size = 42, onClick }) {
   const Tag = onClick ? "button" : "span";
   return (
     <Tag
-      className="avatar"
+      className={`avatar frame-${person.club_style?.frame || "plain"}`}
       style={{
         width: size,
         height: size,
@@ -216,7 +224,9 @@ function App() {
       setUnread(0);
       return;
     }
-    const refresh = () =>
+    let events;
+    const refresh = () => {
+      if (!pageIsActive()) return;
       api("/inbox")
         .then((d) =>
           setUnread(
@@ -225,20 +235,34 @@ function App() {
           ),
         )
         .catch(() => {});
-    refresh();
-    const events = new EventSource("/api/live");
-    events.addEventListener("refresh", () => {
+    };
+    const connect = () => {
+      if (
+        !pageIsActive() ||
+        (events && events.readyState !== EventSource.CLOSED)
+      )
+        return;
       refresh();
-      window.dispatchEvent(new Event("velo-refresh"));
-    });
+      events = new EventSource("/api/live");
+      events.addEventListener("refresh", () => {
+        refresh();
+        window.dispatchEvent(new Event("velo-refresh"));
+      });
+    };
+    const disconnect = () => events?.close();
+    connect();
+    window.addEventListener("pagehide", disconnect);
+    window.addEventListener("pageshow", connect);
     const id = setInterval(() => {
       if (!document.hidden) refresh();
     }, 30000);
     return () => {
       clearInterval(id);
-      events.close();
+      disconnect();
+      window.removeEventListener("pagehide", disconnect);
+      window.removeEventListener("pageshow", connect);
     };
-  }, [user]);
+  }, [user?.user_id]);
   const value = {
     user,
     setUser,
@@ -254,6 +278,10 @@ function App() {
   const pathname = route.split("?")[0];
   let page = [
     "/quests",
+    "/passport",
+    "/challenges",
+    "/beta",
+    "/invite",
     "/studio",
     "/moderation",
     "/preferences",
@@ -273,6 +301,9 @@ function App() {
             : pathname.startsWith("/@")
               ? "profile"
               : "home";
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [route]);
   const nav = (page) =>
     page === "profile"
       ? user
@@ -282,6 +313,9 @@ function App() {
   return (
     <Context.Provider value={value}>
       <div className="app">
+        <a className="skip-link" href="#main-content">
+          Skip to content
+        </a>
         <aside className="sidebar">
           <button className="brand" onClick={() => navigate("/")}>
             <span className="brand-mark">
@@ -314,6 +348,18 @@ function App() {
           </nav>
           {user && (
             <div className="extra-nav">
+              <button onClick={() => navigate("/challenges")}>
+                <Flag size={19} />
+                Weekly challenge
+              </button>
+              <button onClick={() => navigate("/passport")}>
+                <Sparkles size={19} />
+                Your Passport
+              </button>
+              <button onClick={() => navigate("/beta")}>
+                <MessageCircle size={19} />
+                Founding circle
+              </button>
               <button onClick={() => navigate("/library")}>
                 <Bookmark size={19} />
                 Your Library
@@ -368,13 +414,25 @@ function App() {
             </div>
           </div>
         </aside>
-        <main className={`main ${page === "cinema" ? "cinema-main" : ""}`}>
+        <main
+          tabIndex={-1}
+          id="main-content"
+          className={`main ${page === "cinema" ? "cinema-main" : ""}`}
+        >
           {!ready ? (
             <div className="loading-page">
               <Spinner />
             </div>
           ) : page === "home" ? (
             <Explore app={value} />
+          ) : page === "passport" ? (
+            <PassportStudio app={value} />
+          ) : page === "challenges" ? (
+            <Challenges app={value} />
+          ) : page === "beta" ? (
+            <BetaLab app={value} />
+          ) : page === "invite" ? (
+            <BetaInvite app={value} />
           ) : page === "quests" ? (
             <Quests app={value} />
           ) : page === "cinema" ? (
@@ -1103,6 +1161,11 @@ function Auth({ mode, setMode, onClose }) {
             : mode === "reset"
               ? "/auth/reset"
               : "/auth/login";
+      if (mode === "signup")
+        b.invite =
+          b.invite ||
+          new URLSearchParams(location.search).get("invite") ||
+          undefined;
       if (mode === "reset")
         b.token = new URLSearchParams(location.search).get("reset");
       const d = await api(endpoint, b);
@@ -1154,6 +1217,19 @@ function Auth({ mode, setMode, onClose }) {
             : "Your moments, your favorites, your community."}
         </p>
         <form onSubmit={submit} key={mode}>
+          {mode === "signup" &&
+            config.inviteOnly &&
+            !new URLSearchParams(location.search).get("invite") && (
+              <label>
+                Beta invite code
+                <input
+                  name="invite"
+                  required
+                  maxLength={128}
+                  autoComplete="off"
+                />
+              </label>
+            )}
           {mode === "signup" && (
             <>
               <label>
@@ -1292,7 +1368,7 @@ function Profile({ username }) {
       <div className="page-top">
         <button className="back-button" onClick={() => navigate("/")}>
           <ChevronLeft size={18} />
-          Back to feed
+          Back to the club
         </button>
         {owner ? (
           <div className="profile-menu">
@@ -1338,6 +1414,15 @@ function Profile({ username }) {
       </div>
       {owner && (
         <div className="profile-tools">
+          <button className="secondary" onClick={() => navigate("/passport")}>
+            Your Passport
+          </button>
+          <button className="secondary" onClick={() => navigate("/challenges")}>
+            Weekly challenge
+          </button>
+          <button className="secondary" onClick={() => navigate("/beta")}>
+            Founding circle
+          </button>
           <button className="secondary" onClick={() => navigate("/library")}>
             Your Library
           </button>
@@ -1381,6 +1466,9 @@ function Profile({ username }) {
           </div>
           <h1>{p.display_name}</h1>
           <p className="profile-handle">@{p.username}</p>
+          <span className="title-chip">
+            {p.club_style?.titleLabel || "Curious soul"}
+          </span>
         </div>
         {owner ? (
           <button

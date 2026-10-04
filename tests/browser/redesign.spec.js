@@ -8,7 +8,7 @@ test("field guide discovery, dedicated screening, and durable private quest rewa
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Take a turn toward curiosity." }),
+    page.getByRole("heading", { name: "A world worth getting lost in." }),
   ).toBeVisible();
   await expect(page.locator("video")).toHaveCount(0);
   await expect(page.locator(".featured-film")).toBeVisible();
@@ -94,7 +94,9 @@ test("field guide discovery, dedicated screening, and durable private quest rewa
   await page
     .getByRole("button", { name: "Collect 40 XP", exact: true })
     .click();
-  await expect(page.getByRole("status")).toContainText("+40 XP");
+  await expect(
+    page.getByRole("status").filter({ hasText: "+40 XP" }),
+  ).toBeVisible();
   await expect(page.locator(".passport-level")).toContainText("40 lifetime XP");
   await expect(page.locator(".passport-stamp.earned")).toContainText(
     "Pathfinder",

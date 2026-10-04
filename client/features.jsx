@@ -160,6 +160,7 @@ export function Interests({ app, onDone, onboarding = false }) {
     try {
       const d = await api("/preferences", { interests: chosen }, "PUT");
       setUser(d.user);
+      window.dispatchEvent(new Event("velo-club"));
       notify("Your feed preferences are saved.");
       onDone?.();
     } catch (e) {
@@ -173,8 +174,8 @@ export function Interests({ app, onDone, onboarding = false }) {
       <div className="eyebrow">YOUR WORLD, YOUR WAY</div>
       <h2>{onboarding ? "What are you into?" : "Tune your feed"}</h2>
       <p>
-        Choose topics you love. Your viewing and feedback will keep shaping For
-        You.
+        Choose topics you love. Your viewing and feedback will keep shaping Club
+        picks.
       </p>
       <div className="interest-grid">
         {config.categories.map((c) => (

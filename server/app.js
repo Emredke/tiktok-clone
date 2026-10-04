@@ -1,3 +1,4 @@
+import { installClub, publicStyle, consumeInvite } from "./club.js";
 import { installQuests } from "./quests.js";
 import { installSounds } from "./sounds.js";
 import { installPush } from "./push.js";
@@ -257,6 +258,7 @@ function profileInfo(id, viewer) {
   if (!p || blocked(id, viewer)) return null;
   return {
     ...p,
+    club_style: publicStyle(id),
     video_count: all(
       `SELECT v.parent_id FROM videos v WHERE v.user_id=? AND ${visibility(viewer)}`,
       id,
@@ -277,7 +279,11 @@ function profileInfo(id, viewer) {
 }
 app.get("/api/health", (req, res) => res.json({ ok: !!one("SELECT 1") }));
 app.get("/api/config", (req, res) =>
-  res.json({ categories, mailMode: process.env.MAIL_MODE || "development" }),
+  res.json({
+    categories,
+    mailMode: process.env.MAIL_MODE || "development",
+    inviteOnly: process.env.BETA_INVITE_ONLY === "1",
+  }),
 );
 app.get("/api/auth/me", (req, res) =>
   res.json({ user: req.user ? profile(req.user.id) : null }),
@@ -285,7 +291,15 @@ app.get("/api/auth/me", (req, res) =>
 app.post(
   "/api/auth/signup",
   authRate,
-  validate(z.object({ email, password, username, display_name: text(50) })),
+  validate(
+    z.object({
+      email,
+      password,
+      username,
+      display_name: text(50),
+      invite: z.string().max(128).optional(),
+    }),
+  ),
   async (req, res) => {
     const b = req.body;
     const id = randomUUID();
@@ -304,6 +318,7 @@ app.post(
           b.username,
           b.display_name,
         );
+        consumeInvite(b.invite, id);
       });
     } catch (e) {
       if (e.message.includes("UNIQUE"))
@@ -1105,6 +1120,7 @@ const upload = multer({
 const uploadRate = rateLimit({
   windowMs: 3600000,
   limit: 10,
+  keyGenerator: (req) => `user:${req.user.id}`,
   message: { error: "Upload limit reached. Try again in one hour." },
 });
 app.post(
@@ -1211,6 +1227,7 @@ app.get("/api/avatars/:id", async (req, res) => {
 });
 installSounds(app);
 installQuests(app, { uid, visibleVideo });
+installClub(app, { uid, validate, visibleVideo, videos });
 installPush(app, { validate, uid });
 installCommunity(app, { validate, uid, visibleVideo, videos });
 installFeatures(app, {

@@ -43,6 +43,11 @@ All seeded creators are explicitly fictional. **Demo login is disabled in produc
 
 ## What works
 
+- A cinematic forest-and-gold discovery home with an animated globe, paper textures, accessible focus, reduced-motion support, and responsive film shelves.
+- A first-adventure guide with interest, saved-film, and verification steps; one lifetime 25-XP reward and a First light stamp.
+- Earned passport covers, profile frames, and titles, checked against server-derived XP and saved across sessions.
+- Rotating weekly creative challenges, original-film submission/withdrawal, a real shared showcase, and a once-weekly 75-XP reward.
+- A ten-person invite system, optional invitation-only signup, private beta feedback with staff triage, and honest physical-device reports. See [the beta guide](docs/BETA_GUIDE.md).
 - An editorial discovery home with topic trails, a screening shelf, Club picks and Your circle, explicit pagination, and no homepage autoplay.
 - A dedicated screening room with native video controls, separate field notes and licensing credits, horizontal social actions, and related films.
 - Private weekly quests for saving three topics, curating a collection of two creators, and publishing an original. Server-validated claims award XP once per week, unlock permanent passport stamps, and advance levels every 200 XP. Imports and remixes do not earn creator rewards; no rewards for watch time or messaging, no public leaderboard, and no streak penalties.
@@ -87,7 +92,7 @@ React + Vite → same-origin Express API → SQLite (WAL, foreign keys, indexes)
 - `scripts/seed.js`: deterministic original media and sample social activity.
 - `tests/`: real integration and browser regression suites.
 
-The database contains users, profiles, videos, video_views, likes, comments, comment_likes, follows, bookmarks, shares, hashtags, video_hashtags, notifications, messages, sessions, auth_tokens, blocks, reports, and analytics_events. Foreign keys and composite uniqueness prevent orphaned interactions and duplicate likes/follows. Permissions are enforced in the API; this SQLite deployment does not have database row-level security.
+The database contains club_passports, challenge_entries, beta_invites, beta_feedback, beta_devices, users, profiles, videos, video_views, likes, comments, comment_likes, follows, bookmarks, shares, hashtags, video_hashtags, notifications, messages, sessions, auth_tokens, blocks, reports, and analytics_events. Foreign keys and composite uniqueness prevent orphaned interactions and duplicate likes/follows. Permissions are enforced in the API; this SQLite deployment does not have database row-level security.
 
 **Deployment scope:** one application instance with a persistent SQLite volume. WAL and indexes are appropriate for an early-stage single-service deployment. For multiple application replicas, migrate the relational layer to PostgreSQL, use a shared rate-limit/session cleanup service, and replace the local durable media queue with a distributed worker service. S3 already separates media capacity from database size. There is no claim of load-tested internet-scale capacity.
 
@@ -127,7 +132,7 @@ Seed media is generated on demand and excluded from Git to keep the repository s
 
 ## Recommendations and analytics
 
-Candidates are limited to a recent pool of 200 visible, unblocked videos, excluding IDs already returned in the current scroll session. Eight ranked entries are sent per request; the frontend keeps media sources only on the active video and its neighbors.
+Candidates are limited to a recent pool of 200 visible, unblocked videos, excluding IDs already returned in the current scroll session. Eight ranked entries are sent per request; the screening room loads the active film, while the home and related shelves show thumbnails without autoplay.
 
 `rankVideos(candidates, userId)` considers:
 
@@ -148,16 +153,16 @@ Reports are stored with target type/ID, reason, reporter, creation time, and mod
 
 ```sh
 npm run check                 # Production build + API/database integration tests
-npx playwright install chromium
-npm run test:e2e              # Full flow on desktop and iPhone-size Chromium
+npx playwright install chromium webkit
+npm run test:e2e              # Full flow on desktop and iPhone 16 Pro/Android Chromium and iPhone-size WebKit
 npm audit --audit-level=moderate
 ```
 
 The integration suite uses a disposable database, validates seed completeness/idempotence, and tests authentication, verification, reset/session revocation, CSRF, video ranges, likes, saved privacy, follows, comments/replies, recommendations, actual transcoding, private media, messaging, notifications, search, reporting, blocking, and cascaded deletion.
 
-The browser suite starts a separate test server/database on port 3101. It tests actual playback, signup/verification, scroll-and-pause, social actions, search, profile editing, upload/playback, notifications, logout/login, persistent sessions, console errors, and horizontal overflow. Test accounts stay in the ignored `data/e2e.sqlite` database; delete that database when no longer needed. Screenshots/traces of failures go into `test-results/`.
+The browser suite starts a separate test server/database on port 3101. It tests actual playback, signup/verification, screening-room playback, social actions, search, profile editing, upload/playback, notifications, logout/login, persistent sessions, console errors, and horizontal overflow. Test accounts stay in the ignored `data/e2e.sqlite` database; delete that database when no longer needed. Screenshots/traces of failures go into `test-results/`.
 
-GitHub Actions runs builds, security audit, integration tests, and the four browser checks across two layouts on every main-branch push and pull request. The Docker deployment definition is included; Docker was unavailable in the local verification environment. Tests use local storage and development email; production SMTP and your chosen S3 provider require environment-specific deployment verification. Camera recording is exercised with a synthetic browser camera. Chromium testing does not substitute for device testing on Safari/iOS or camera testing on physical phones.
+GitHub Actions runs builds, security audit, integration tests, and 18 browser checks across desktop, iPhone 16 Pro, Android, and WebKit layouts on every main-branch push and pull request. The Docker deployment definition is included; Docker was unavailable in the local verification environment. Tests use local storage and development email; production SMTP and your chosen S3 provider require environment-specific deployment verification. Camera recording is exercised with a synthetic browser camera. Chromium testing does not substitute for device testing on Safari/iOS or camera testing on physical phones.
 
 ## Deploy
 

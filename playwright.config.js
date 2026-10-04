@@ -20,7 +20,21 @@ export default defineConfig({
     { name: "desktop", use: { viewport: { width: 1440, height: 1000 } } },
     {
       name: "mobile",
-      use: { ...devices["iPhone 13"], defaultBrowserType: "chromium" },
+      use: { ...devices["iPhone 16 Pro"], defaultBrowserType: "chromium" },
+    },
+    {
+      name: "android",
+      testMatch: "**/club.spec.js",
+      use: { ...devices["Pixel 7"], defaultBrowserType: "chromium" },
+    },
+    {
+      name: "safari",
+      testMatch: "**/club.spec.js",
+      use: {
+        ...devices["iPhone 16 Pro"],
+        defaultBrowserType: "webkit",
+        launchOptions: { args: [] },
+      },
     },
   ],
   webServer: {

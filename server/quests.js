@@ -107,7 +107,11 @@ export function questState(user, visibleVideo, now) {
           : level >= 2
             ? "Explorer"
             : "Newcomer",
-    badges: questCatalog
+    badges: [
+      ...questCatalog,
+      { id: "first-adventure", badge: "First light", icon: "compass" },
+      { id: "challenge", badge: "Trail maker", icon: "camera" },
+    ]
       .filter((q) => claims.some((c) => c.quest_id === q.id))
       .map((q) => ({ id: q.id, name: q.badge, icon: q.icon })),
     quests: questCatalog.map((q) => ({

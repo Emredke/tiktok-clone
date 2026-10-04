@@ -1,3 +1,10 @@
+import {
+  WorldArt,
+  FirstAdventure,
+  ChallengeTeaser,
+  useClub,
+  clubRefresh,
+} from "./club.jsx";
 import React, { useState, useEffect } from "react";
 import {
   Compass,
@@ -20,6 +27,7 @@ function useQuests(user) {
     [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const refresh = () => setRevision((v) => v + 1);
+  useEffect(() => setState(null), [user?.user_id]);
   useEffect(() => {
     let alive = true;
     setError("");
@@ -43,8 +51,11 @@ function useQuests(user) {
 
 export function Passport({ app, compact = false }) {
   const { state, error, refresh } = useQuests(app.user);
+  const { state: club } = useClub(app.user);
   return (
-    <section className={`passport ${compact ? "compact-passport" : ""}`}>
+    <section
+      className={`passport passport-cover-${club?.style.cover || "paper"} ${compact ? "compact-passport" : ""}`}
+    >
       <div className="passport-top">
         <span className="eyebrow">YOUR CREATIVE PASSPORT</span>
         <Compass size={22} />
@@ -87,8 +98,17 @@ export function Passport({ app, compact = false }) {
                 {state.levelXp} / {state.nextLevelXp} XP to level{" "}
                 {state.level + 1}
               </span>
-              <span>{state.badges.length} stamps</span>
+              <span>
+                {state.badges.length}{" "}
+                {state.badges.length === 1 ? "stamp" : "stamps"}
+              </span>
             </div>
+            <button
+              onClick={() => app.navigate("/passport")}
+              className="passport-customize"
+            >
+              Make it yours <ArrowUpRight size={17} />
+            </button>
             <button onClick={() => app.navigate("/quests")}>
               Visit your quest board <ArrowRight size={17} />
             </button>
@@ -154,6 +174,7 @@ function DiscoveryCard({ video, app, featured = false, index = 0 }) {
 }
 
 export function Explore({ app }) {
+  const { state: club } = useClub(app.user);
   const [mode, setMode] = useState("foryou"),
     [items, setItems] = useState([]),
     [loading, setLoading] = useState(true),
@@ -248,17 +269,58 @@ export function Explore({ app }) {
           </button>
         </form>
       </header>
-      <div className="explore-intro">
-        <div>
-          <span className="eyebrow">SHORT FILMS. LONGER POSSIBILITIES.</span>
+      <div className="world-hero">
+        <div className="hero-copy">
+          <span className="hero-kicker">
+            <i /> A HOME FOR THE CURIOUS
+          </span>
           <h1>
-            Take a turn
+            A world worth
             <br />
-            toward <em>curiosity.</em>
+            getting <em>lost in.</em>
           </h1>
-          <p>Pick a trail. Find a perspective. Make something worth sharing.</p>
+          <p>
+            Little films. Big feelings. Follow your curiosity somewhere
+            unexpected.
+          </p>
+          <div className="hero-actions">
+            <button
+              className="light-button"
+              onClick={() => app.navigate("/discover")}
+            >
+              Find your next wonder <ArrowUpRight size={18} />
+            </button>
+            <button
+              className="hero-text-link"
+              onClick={() => app.navigate("/challenges")}
+            >
+              Make something together <ArrowRight size={17} />
+            </button>
+          </div>
+          <div className="hero-caption">
+            <span>✦</span>
+            <span>
+              {club
+                ? `${club.films} credited real films`
+                : "Fresh perspectives"}{" "}
+              · A whole world to discover
+            </span>
+          </div>
         </div>
-        <Passport app={app} />
+        <WorldArt />
+      </div>
+      <FirstAdventure
+        app={app}
+        club={club}
+        onFilm={() =>
+          items[0]
+            ? app.navigate(`/v/${items[0].id}`)
+            : app.navigate("/discover")
+        }
+      />
+      <div className="home-companion">
+        <ChallengeTeaser app={app} challenge={club?.challenge} />
+        <Passport app={app} compact />
       </div>
       <div className="section-heading">
         <div>
@@ -387,6 +449,9 @@ export function Explore({ app }) {
       <footer className="field-footer">
         <Compass size={17} />
         <span>A club for curious people. Go at your own pace.</span>
+        <button onClick={() => app.navigate("/beta")}>
+          Leave a field note <ArrowUpRight size={16} />
+        </button>
         <button onClick={() => app.navigate("/quests")}>
           The quest board <ArrowUpRight size={16} />
         </button>
@@ -405,7 +470,7 @@ export function Quests({ app }) {
       try {
         const d = await api(`/quests/${id}/claim`, {});
         setState(d.state);
-        window.dispatchEvent(new Event("velo-quests"));
+        clubRefresh();
         app.notify(
           d.awarded
             ? `+${d.awarded} XP added to your passport.`
@@ -432,7 +497,7 @@ export function Quests({ app }) {
               <strong>This week’s adventures</strong>
               <span>
                 {state
-                  ? `New quests ${new Date(state.ends).toLocaleDateString(undefined, { month: "short", day: "numeric" })} · Monday reset at 00:00 UTC`
+                  ? `New quests ${new Date(state.ends).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" })} · Monday reset at 00:00 UTC`
                   : "Three ways to follow your curiosity"}
               </span>
             </div>
@@ -530,8 +595,16 @@ export function Quests({ app }) {
             <span className="eyebrow">YOUR STAMP BOOK</span>
             <h2>Proof of possibility.</h2>
             <div className="stamp-grid">
-              {(state?.quests || []).map((q) => {
-                const earned = state.badges.some((b) => b.id === q.id);
+              {[
+                ...(state?.quests || []),
+                {
+                  id: "first-adventure",
+                  badge: "First light",
+                  icon: "compass",
+                },
+                { id: "challenge", badge: "Trail maker", icon: "camera" },
+              ].map((q) => {
+                const earned = state?.badges.some((b) => b.id === q.id);
                 const Icon = questIcons[q.icon];
                 return (
                   <div

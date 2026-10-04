@@ -1,5 +1,25 @@
+// Stop background work while a document leaves or enters the page cache.
+let pageActive = true;
+const pendingRequests = new Set();
+export const pageIsActive = () => pageActive;
+window.addEventListener("pagehide", () => {
+  pageActive = false;
+  for (const controller of pendingRequests) controller.abort();
+  pendingRequests.clear();
+});
+window.addEventListener("pageshow", () => {
+  pageActive = true;
+});
 export async function api(path, body, method) {
+  if (!pageActive)
+    throw new DOMException(
+      "Page navigation interrupted the request.",
+      "AbortError",
+    );
+  const controller = new AbortController();
+  pendingRequests.add(controller);
   const options = {
+    signal: controller.signal,
     credentials: "same-origin",
     method: method || (body ? "POST" : "GET"),
   };
@@ -7,16 +27,20 @@ export async function api(path, body, method) {
     options.headers = { "Content-Type": "application/json" };
     options.body = JSON.stringify(body);
   }
-  const response = await fetch(`/api${path}`, options);
-  const data = await response
-    .json()
-    .catch(() => ({ error: "Request failed." }));
-  if (!response.ok) {
-    const e = new Error(data.error || "Request failed.");
-    e.status = response.status;
-    throw e;
+  try {
+    const response = await fetch(`/api${path}`, options);
+    const data = await response
+      .json()
+      .catch(() => ({ error: "Request failed." }));
+    if (!response.ok) {
+      const e = new Error(data.error || "Request failed.");
+      e.status = response.status;
+      throw e;
+    }
+    return data;
+  } finally {
+    pendingRequests.delete(controller);
   }
-  return data;
 }
 export function uploadFile(path, form, onProgress) {
   return new Promise((resolve, reject) => {
