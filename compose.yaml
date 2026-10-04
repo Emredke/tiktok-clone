@@ -11,6 +11,7 @@ services:
       MEDIA_DIR: /app/data/media
     volumes:
       - velo-data:/app/data
+    stop_grace_period: 90s
     restart: unless-stopped
 volumes:
   velo-data:

@@ -11,10 +11,11 @@ Requires **Node.js 24+**, npm, and **FFmpeg/FFprobe** on your PATH. Install FFmp
 ```sh
 npm ci
 cp .env.example .env
+npm run captions:setup   # Python 3.9+, local automatic speech captions
 npm run dev
 ```
 
-Open **http://localhost:5173**. The API runs on port 3001. First startup automatically creates the schema and seeds 24 fictional creators, 36 original seven-second vertical videos, 576 relational likes, 144 comments/replies, bookmarks, shares, views, and follows. Generating the clips takes approximately 30–90 seconds depending on hardware. Startup is idempotent; subsequent runs preserve all data.
+Open **http://localhost:5173**. The API runs on port 3001. First startup automatically creates the schema and seeds 24 fictional creators, 36 original seven-second vertical videos, 576 relational likes, 144 comments/replies, bookmarks, shares, views, and follows. Generating the clips takes approximately 30–90 seconds depending on hardware. Startup also imports 13 credited real clips in the background. Startup is idempotent; subsequent runs preserve all data.
 
 For a single-server local preview of the compiled app:
 
@@ -53,6 +54,12 @@ All seeded creators are explicitly fictional. **Demo login is disabled in produc
 - MP4/MOV/WebM uploads, live upload progress, preview, duration trim, cover-frame selection, category, captions/hashtags, public/followers/private visibility, comments switch.
 - Browser camera recording when supported and permission is granted; graceful fallback to upload.
 - Reporting of videos, accounts, and comments; bilateral account blocking/unblocking; deletion of your own videos/comments.
+- Interest onboarding, editable feed preferences, reversible negative feedback, and recommendation explanations.
+- Creator Studio with persistent drafts, background processing/retry, captions review, and audience analytics.
+- Timed text overlays, speed/rotation/framing edits, local automatic speech captions, and adaptive HLS playback.
+- Permission-controlled duets/remixes with original links and credit preservation.
+- Staff moderation queue, content removal, timed suspension/restoration, and audit history.
+- A credited, reproducibly imported collection of 13 openly licensed real videos.
 
 ## Architecture
 
@@ -74,7 +81,7 @@ React + Vite → same-origin Express API → SQLite (WAL, foreign keys, indexes)
 
 The database contains users, profiles, videos, video_views, likes, comments, comment_likes, follows, bookmarks, shares, hashtags, video_hashtags, notifications, messages, sessions, auth_tokens, blocks, reports, and analytics_events. Foreign keys and composite uniqueness prevent orphaned interactions and duplicate likes/follows. Permissions are enforced in the API; this SQLite deployment does not have database row-level security.
 
-**Deployment scope:** one application instance with a persistent SQLite volume. WAL and indexes are appropriate for an early-stage single-service deployment. For multiple application replicas, migrate the relational layer to PostgreSQL, use a shared rate-limit/session cleanup service, and put transcoding on a job queue. S3 already separates media capacity from database size. There is no claim of load-tested internet-scale capacity.
+**Deployment scope:** one application instance with a persistent SQLite volume. WAL and indexes are appropriate for an early-stage single-service deployment. For multiple application replicas, migrate the relational layer to PostgreSQL, use a shared rate-limit/session cleanup service, and replace the local durable media queue with a distributed worker service. S3 already separates media capacity from database size. There is no claim of load-tested internet-scale capacity.
 
 ## Storage, uploads, and privacy
 
@@ -94,7 +101,7 @@ S3_ENDPOINT=https://your-s3-endpoint
 S3_PUBLIC_URL=https://your-media-origin
 ```
 
-Keep the bucket **private**, with public access blocked. Grant the server identity only the bucket/prefix permissions it needs (`s3:PutObject`, `s3:GetObject`). Uploads are streamed to temporary files, probed with FFprobe, transcoded to H.264/AAC MP4, and given JPEG thumbnails. Uploads are limited to 100 MB, 1–180 seconds, and 4K input dimensions; published video width is at most 1080 pixels. Avatar uploads accept JPG/PNG/WebP up to 5 MB and are re-encoded to JPEG. Media processing has timeouts and a two-video concurrency cap; exceeding the cap gives a retryable response.
+Keep the bucket **private**, with public access blocked. Grant the server identity only the bucket/prefix permissions it needs (`s3:PutObject`, `s3:GetObject`). Uploads are streamed to temporary files, probed with FFprobe, transcoded to H.264/AAC MP4, and given JPEG thumbnails. Uploads are limited to 100 MB, 1–180 seconds, and 4K input dimensions; published video width is at most 1080 pixels. Avatar uploads accept JPG/PNG/WebP up to 5 MB and are re-encoded to JPEG. Media processing has timeouts and a persistent background queue with one processing worker.
 
 The client sees mediated `/api/media/:id/video` and `/api/media/:id/thumbnail` URLs. The server checks visibility and blocks before serving local files or issuing a **60-second signed S3 download URL**. Private/follower videos cannot be sent to an in-app recipient who lacks access. Anonymous visitors cannot retrieve private media. Local files support byte-range playback. Access already granted through a signed URL remains valid until that URL expires. No AWS or SMTP secrets are shipped to the frontend.
 
@@ -104,7 +111,7 @@ Deleting content removes its database row and cascades social data immediately; 
 
 ## Seed videos and content rights
 
-The 36 clips are **original procedural motion studies**, with generated gradient animations, typography, and synthesized audio. They are sample clips labeled across 12 categories, not scraped footage of actual sports, animals, or people. No TikTok videos, licensed songs, external media URLs, or scraped profile photos are used. Initial profile pictures are deterministic initials; users can upload their own photo.
+The 36 clips are **original procedural motion studies**, with generated gradient animations, typography, and synthesized audio. They are sample clips labeled across 12 categories, not scraped footage of actual sports, animals, or people. The original procedural collection does not use scraped TikTok videos, commercial songs, or external profile photos. The additional open collection imports real footage with individual source licenses and credits; see below. Initial profile pictures are deterministic initials; users can upload their own photo.
 
 The generator is included and covered by the repository's MIT license. `npm run seed` fills an empty or incomplete database idempotently. To start over in a disposable development environment, stop the app, back up anything needed, remove `data/velo.sqlite` plus its WAL/SHM files, then run the seed command. This destroys local user content; it is not a production reset procedure.
 
@@ -127,7 +134,7 @@ Affinity is bounded with `tanh`, so one session cannot dominate the score indefi
 
 Server-side validation uses Zod and prepared database statements. Mutations require same-origin JSON or multipart requests; cross-site fetch metadata and mismatched origins are rejected. React escapes user content. Helmet sets a restrictive content security policy. APIs, account attempts, uploads, and media delivery have separate rate limits. General API limits identify authenticated users independently; anonymous and authentication attempts are limited by IP. Requests are size-limited. Profile/video/comment ownership, collection privacy, follower visibility, and bilateral blocks are checked server-side. Auth cookies are never readable by frontend JavaScript.
 
-Reports are stored with target type/ID, reason, reporter, creation time, and moderation status. A separate admin dashboard can be built against this queue; no unrestricted admin endpoint is exposed. Administrators can review the database through trusted operational tooling. Public launch still requires your own operational moderation process and policy.
+Reports are stored with target type/ID, reason, reporter, creation time, and moderation status. The staff-only Moderation dashboard reviews this queue, records decisions, removes content, and suspends/restores accounts. Staff roles are granted through trusted server tooling. Public launch still requires your own operational moderation process and policy.
 
 ## Test and verify
 
@@ -166,3 +173,59 @@ location / {
 6. Back up the SQLite database with SQLite's backup API or a consistent snapshot (include WAL state); set bucket backups/lifecycle policy and operational log retention. Periodically delete expired session/auth-token rows and unused media objects through trusted maintenance tooling.
 
 Static-only hosting such as GitHub Pages cannot run this backend. This repository does not provision cloud accounts or deploy a public instance automatically.
+
+## Creator Studio and community features
+
+New accounts choose interests during onboarding; these persist in `interests` and affect the For You score. Feed preferences let users edit topics and undo hidden videos, creators, or categories. Video options explain one applicable ranking signal, offer “Not interested,” and open duets/remixes. A small editorial boost helps people discover the credited open collection; creator/category diversity prevents a single collection from occupying consecutive slots. Following retains chronological order.
+
+**Creator Studio** is available from the sidebar and your profile, including on mobile. It lists drafts, queued/processing/failed uploads, progress, retry controls, caption editing, and 7/30/90-day analytics. Analytics measure playback events, seconds watched, average watch time, completed views, daily views, per-video performance, and new/net followers. One view represents a flushed viewing session rather than a deduplicated person. Generated demo watch events are explicitly excluded from Studio watch metrics. Historical follows created before this update are not included in follower-change history.
+
+Uploads now return **202 Accepted** with an owner-only job ID. Raw media is retained privately in local storage or S3. A single durable SQLite worker processes one job at a time, generates H.264/AAC MP4, JPEG covers, and low/medium/high HLS variants, and marks it ready atomically. HLS.js automatically switches quality; Safari uses native HLS and other browsers fall back to MP4. Playlists and segments pass the same visibility checks as MP4 delivery, and S3 HLS/raw media is streamed through the API. Restarting recovers interrupted processing jobs. Keep one application/worker instance per SQLite database; this is not a distributed queue. At most 20 unfinished uploads per account are retained. Failed uploads require an explicit retry from Studio.
+
+Drafts survive reloads and remain invisible outside their owner's job endpoints. The editor supports trimming, cover selection, 0.5×/1×/1.5×/2× speed, 90-degree rotations, fit/fill framing, audio removal, and timed burned-in text overlays. Rendered edits appear after processing. Drafts can be resumed, edited, published, or deleted. Moderated uploads cannot be republished through retry.
+
+Duets place the source and response side by side; the source holds its last frame if shorter than the response. Remixes prepend up to eight seconds of the source to the response, with a combined 180-second limit. Only visible public sources with the relevant creator permission enabled can be used. Permissions are rechecked at publication. Original links and imported author/license credits carry through collaboration. Original removal/deletion, suspension, and bilateral blocks protect collaboration chains too.
+
+### Local automatic captions
+
+Requires Python 3.9+ for development. Run:
+
+```sh
+npm run captions:setup
+```
+
+This installs pinned `faster-whisper` in `data/captions-venv` and caches the multilingual `tiny` model in `data/models`. Check “Generate speech captions” when creating a video. Speech is processed **on this server**, without uploading audio to a transcription provider. The model is downloaded from its model host during setup. Docker bundles Python, the caption runtime, and the model. Override `CAPTION_PYTHON`, `CAPTION_MODEL`, and `CAPTION_MODEL_DIR` as needed. Recognition can be inaccurate; review words/timing in Studio. No-speech clips get a clear no-speech status. A model/setup failure does not discard the upload: Studio shows a warning and permits manual captions. Saved cues produce authenticated WebVTT tracks, and viewers can toggle captions.
+
+To run the actual speech-model integration check:
+
+```sh
+npm run seed
+node scripts/caption-fixture.js
+TEST_CAPTIONS=1 npm test
+```
+
+The test fixture uses the public JFK inaugural speech distributed in the Whisper repository; it is not included in the public video feed.
+
+### Staff moderation
+
+Grant access to an **existing verified account** from the server:
+
+```sh
+npm run admin -- your-email@example.com
+# To revoke:
+npm run admin -- your-email@example.com --revoke
+```
+
+There is no public role-assignment endpoint or default production administrator. Open Moderation from the staff profile/sidebar. Staff can review reports, dismiss them, remove reported videos/comments, suspend creators for a specified duration, and restore suspended accounts. Every decision requires a reason and creates an immutable audit record. Repeated decisions on an already-reviewed report are rejected. Removing a video hides its collaboration descendants and all mediated media. Suspended creators cannot mutate content, and their videos become unavailable until restoration/expiry. This dashboard supplies operational tools; your deployment still needs people and a community policy to review reports.
+
+### Real video collection and credits
+
+Startup now imports **13 real clips** from Wikimedia Commons in the background: wildlife, waterfalls, ocean footage, cooking, and robotics. These are individually selected **CC0 or CC BY 4.0** files. `scripts/open-videos.json` preserves the exact file URL, description page, original author, license link, retrieval date, and transformations. Clips are shortened to at most twelve seconds, resized/transcoded, and have audio removed. `Velo Open Archive` is a Velo-operated collection, not an account impersonating the original creators. Imported videos start with zero fabricated likes, comments, views, or followers. Credits are visible on each video and in its options and survive remixing.
+
+```sh
+npm run import:videos       # Idempotent manual import / retry
+```
+
+Set `IMPORT_REAL_VIDEOS=0` to disable automatic import. Fresh installations need outbound access to `upload.wikimedia.org`; an unavailable source is logged and skipped while the app remains usable. Run the import again to retry. Binary video files stay in private storage and out of Git; the repository contains the reproducible curated manifest/importer. Existing imported files remain usable without network access. Before adding sources, verify each file's own rights and attribution requirements; the collection manifest's entries do not grant rights to other uploads. See [Wikimedia reuse guidance](https://commons.wikimedia.org/wiki/Commons:Reusing_content_outside_Wikimedia).
+
+Back up raw uploads, encoded media, playlists/segments, and SQLite together. Deleted database rows revoke mediated access immediately, while physical orphan cleanup remains an operator task; include `media_jobs.raw_location` and `video_assets.location` when identifying live objects. Captions, interests, feedback, follower history, job state, and moderation history are stored in additive migrations that preserve existing accounts and content.

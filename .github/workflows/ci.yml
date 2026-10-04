@@ -18,7 +18,18 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
       - run: npm ci
       - run: npm audit --audit-level=moderate
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/cache@v4
+        with:
+          path: data/models
+          key: whisper-tiny-v1
+      - run: npm run captions:setup
+      - run: npm run seed && node scripts/caption-fixture.js
       - run: npm run check
+        env:
+          TEST_CAPTIONS: "1"
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - uses: actions/upload-artifact@v4

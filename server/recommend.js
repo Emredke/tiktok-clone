@@ -1,10 +1,25 @@
 import { all } from "./db.js";
 // Replace this function with a model-backed ranker without changing the feed contract.
 export function rankVideos(candidates, userId) {
+  const selected = userId
+    ? new Set(
+        all("SELECT category FROM interests WHERE user_id=?", userId).map(
+          (x) => x.category,
+        ),
+      )
+    : new Set();
   if (!userId)
-    return candidates
-      .map((v) => ({ ...v, score: quality(v) + fresh(v) }))
-      .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+    return diversify(
+      candidates
+        .map((v) => ({
+          ...v,
+          reason: v.source_json
+            ? "From our credited open video collection"
+            : "Recent videos with viewer engagement",
+          score: quality(v) + fresh(v) + (v.source_json ? 7 : 0),
+        }))
+        .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id)),
+    );
   const signals = all(
     `SELECT v.id,v.category,v.user_id,coalesce(group_concat(h.name),'') tags,
  (SELECT count(*) FROM likes WHERE user_id=? AND video_id=v.id) liked,
@@ -38,23 +53,36 @@ export function rankVideos(candidates, userId) {
       (f) => f.following_id,
     ),
   );
-  return candidates
-    .map((v) => ({
-      ...v,
-      score:
-        quality(v) +
-        fresh(v) +
-        Math.tanh((categories[v.category] || 0) / 15) * 7 +
-        Math.tanh((creators[v.user_id] || 0) / 15) * 5 +
-        (v.hashtags || []).reduce(
-          (sum, t) => sum + Math.tanh((tags[t] || 0) / 15) * 2,
-          0,
-        ) +
-        (follows.has(v.user_id) ? 6 : 0) -
-        (seen[v.id] || 0) * 4 +
-        exploration(v.id, userId),
-    }))
-    .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+  return diversify(
+    candidates
+      .map((v) => ({
+        ...v,
+        reason: selected.has(v.category)
+          ? "Matches your selected interest: " + v.category
+          : follows.has(v.user_id)
+            ? "You follow this creator"
+            : (categories[v.category] || 0) > 0
+              ? "You engaged with " + v.category + " videos"
+              : v.source_json
+                ? "Explore our credited open video collection"
+                : "Explore a recent video beyond your usual interests",
+        score:
+          (selected.has(v.category) ? 8 : 0) +
+          (v.source_json ? 7 : 0) +
+          quality(v) +
+          fresh(v) +
+          Math.tanh((categories[v.category] || 0) / 15) * 7 +
+          Math.tanh((creators[v.user_id] || 0) / 15) * 5 +
+          (v.hashtags || []).reduce(
+            (sum, t) => sum + Math.tanh((tags[t] || 0) / 15) * 2,
+            0,
+          ) +
+          (follows.has(v.user_id) ? 6 : 0) -
+          (seen[v.id] || 0) * 4 +
+          exploration(v.id, userId),
+      }))
+      .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id)),
+  );
 }
 function quality(v) {
   const views = Math.max(v.views_count || 0, 10);
@@ -83,4 +111,32 @@ function exploration(id, user) {
   for (const c of `${user}:${id}:${new Date().toISOString().slice(0, 10)}`)
     h = (h * 31 + c.charCodeAt(0)) >>> 0;
   return h % 10 === 0 ? 3 : 0;
+}
+
+function diversify(ranked) {
+  const pending = [...ranked],
+    output = [],
+    creators = {},
+    categories = {};
+  while (pending.length) {
+    let best = 0,
+      score = -Infinity;
+    for (let i = 0; i < pending.length; i++) {
+      const v = pending[i],
+        adjusted =
+          v.score -
+          (creators[v.user_id] || 0) * 2 -
+          (categories[v.category] || 0) * 0.75 -
+          (output.at(-1)?.user_id === v.user_id ? 6 : 0);
+      if (adjusted > score) {
+        score = adjusted;
+        best = i;
+      }
+    }
+    const v = pending.splice(best, 1)[0];
+    output.push(v);
+    creators[v.user_id] = (creators[v.user_id] || 0) + 1;
+    categories[v.category] = (categories[v.category] || 0) + 1;
+  }
+  return output;
 }

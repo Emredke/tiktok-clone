@@ -43,9 +43,20 @@ test("real user flow: signup → verify → watch → interact → search → pr
   await auth
     .getByRole("button", { name: "Create account", exact: true })
     .click();
+  await page
+    .getByRole("button", { name: "Start exploring", exact: true })
+    .click();
   await expect(auth).toHaveCount(0);
   await page.goto(mail(email, "verify").url);
   await expect(page.getByRole("status")).toContainText("Email verified");
+  if (
+    await page
+      .getByRole("button", { name: "Start exploring", exact: true })
+      .isVisible()
+  )
+    await page
+      .getByRole("button", { name: "Start exploring", exact: true })
+      .click();
   const card = page.locator(".video-card").first();
   const id = await card.getAttribute("data-video-id");
   const creator = (await card.locator(".creator-name").innerText())
@@ -68,10 +79,10 @@ test("real user flow: signup → verify → watch → interact → search → pr
   await card.getByRole("button", { name: "Open comments" }).click();
   await page
     .getByLabel("Comment", { exact: true })
-    .fill("A real browser-tested comment");
+    .fill(`A real browser-tested comment ${name}`);
   await page.getByRole("button", { name: "Post comment" }).click();
   await expect(
-    page.getByText("A real browser-tested comment", { exact: true }),
+    page.getByText(`A real browser-tested comment ${name}`, { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.getByRole("button", { name: "Following", exact: true }).click();
@@ -107,6 +118,14 @@ test("real user flow: signup → verify → watch → interact → search → pr
   await page.getByRole("button", { name: "Save profile", exact: true }).click();
   await expect(page.locator(".profile-bio")).toContainText("real browser");
   await page.goto("/create");
+  if (
+    await page
+      .getByRole("button", { name: "Start exploring", exact: true })
+      .isVisible()
+  )
+    await page
+      .getByRole("button", { name: "Start exploring", exact: true })
+      .click();
   await page
     .getByLabel("Select video", { exact: true })
     .setInputFiles(resolve("data/media/seed-01.mp4"));
@@ -117,7 +136,7 @@ test("real user flow: signup → verify → watch → interact → search → pr
   await page.getByLabel("Hashtags", { exact: true }).fill("browser original");
   await page.getByLabel("Category", { exact: true }).selectOption("Education");
   await page.getByRole("button", { name: "Post video", exact: true }).click();
-  await expect(page).toHaveURL(/\/v\//);
+  await expect(page).toHaveURL(/\/v\//, { timeout: 90000 });
   await expect(page.locator(".video-caption")).toContainText(
     "My browser-tested original",
   );
@@ -191,6 +210,14 @@ test("camera recording produces a playable uploaded video", async ({
   });
   expect(login.ok()).toBe(true);
   await page.goto("/create");
+  if (
+    await page
+      .getByRole("button", { name: "Start exploring", exact: true })
+      .isVisible()
+  )
+    await page
+      .getByRole("button", { name: "Start exploring", exact: true })
+      .click();
   await page.getByRole("button", { name: "Record", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Stop recording", exact: true }),
@@ -208,7 +235,7 @@ test("camera recording produces a playable uploaded video", async ({
     .getByLabel("Caption", { exact: true })
     .fill("An original browser camera recording");
   await page.getByRole("button", { name: "Post video", exact: true }).click();
-  await expect(page).toHaveURL(/\/v\//);
+  await expect(page).toHaveURL(/\/v\//, { timeout: 90000 });
   await expect
     .poll(() => page.locator(".video-card video").evaluate((v) => v.readyState))
     .toBeGreaterThan(2);

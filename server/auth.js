@@ -23,7 +23,7 @@ export async function passwordMatch(password, stored) {
 }
 export const profile = (id) =>
   one(
-    "SELECT p.*,u.verified,u.demo FROM profiles p JOIN users u ON u.id=p.user_id WHERE p.user_id=?",
+    "SELECT p.*,u.verified,u.demo,u.role,u.onboarded,u.suspended_until FROM profiles p JOIN users u ON u.id=p.user_id WHERE p.user_id=?",
     id,
   );
 export function session(req, res, id) {
@@ -46,7 +46,7 @@ export function authMiddleware(req, res, next) {
   const token = req.cookies?.velo_session;
   req.user = token
     ? one(
-        "SELECT u.id,u.verified,u.demo FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?",
+        "SELECT u.id,u.verified,u.demo,u.role,u.onboarded,u.suspended_until FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?",
         hashToken(token),
         Date.now(),
       )
@@ -56,6 +56,10 @@ export function authMiddleware(req, res, next) {
 export function requireAuth(req, res, next) {
   if (!req.user)
     return res.status(401).json({ error: "Please sign in to continue." });
+  if (req.user.suspended_until > Date.now())
+    return res
+      .status(403)
+      .json({ error: "Your account is temporarily suspended." });
   next();
 }
 export function requireVerified(req, res, next) {

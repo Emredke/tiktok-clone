@@ -1,3 +1,6 @@
+import { ancestryVisible } from "./policy.js";
+import { installFeatures } from "./features.js";
+import { enqueue, optionsSchema, checkSource } from "./jobs.js";
 import express from "express";
 import helmet from "helmet";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
@@ -88,7 +91,9 @@ app.use(
     windowMs: 60000,
     limit: 250,
     skip: (req) =>
-      req.path.startsWith("/media/") || req.path.startsWith("/avatars/"),
+      req.path.startsWith("/media/") ||
+      req.path.startsWith("/stream/") ||
+      req.path.startsWith("/avatars/"),
     keyGenerator: (req) =>
       req.user ? `user:${req.user.id}` : `ip:${ipKeyGenerator(req.ip)}`,
     standardHeaders: "draft-8",
@@ -106,6 +111,7 @@ const mediaRate = rateLimit({
   message: { error: "Too many media requests. Try again shortly." },
 });
 app.use("/api/media", mediaRate);
+app.use("/api/stream", mediaRate);
 app.use("/api/avatars", mediaRate);
 app.use("/api", (req, res, next) => {
   if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
@@ -152,7 +158,7 @@ const email = z.email().max(254);
 const password = z.string().min(10, "Use at least 10 characters.").max(128);
 const text = (max) => z.string().trim().min(1).max(max);
 const visibility = (uid, alias = "v") =>
-  `(${alias}.privacy='public' OR ${alias}.user_id='${uid || ""}' OR (${alias}.privacy='followers' AND EXISTS(SELECT 1 FROM follows WHERE follower_id='${uid || ""}' AND following_id=${alias}.user_id))) AND NOT EXISTS(SELECT 1 FROM blocks WHERE (user_id='${uid || ""}' AND blocked_id=${alias}.user_id) OR (blocked_id='${uid || ""}' AND user_id=${alias}.user_id))`;
+  `${alias}.status='ready' AND NOT EXISTS(SELECT 1 FROM users su WHERE su.id=${alias}.user_id AND su.suspended_until>${Date.now()}) AND (${alias}.privacy='public' OR ${alias}.user_id='${uid || ""}' OR (${alias}.privacy='followers' AND EXISTS(SELECT 1 FROM follows WHERE follower_id='${uid || ""}' AND following_id=${alias}.user_id))) AND NOT EXISTS(SELECT 1 FROM blocks WHERE (user_id='${uid || ""}' AND blocked_id=${alias}.user_id) OR (blocked_id='${uid || ""}' AND user_id=${alias}.user_id))`;
 // IDs are generated UUIDs; never interpolate request-provided IDs into SQL.
 const uid = (req) => req.user?.id || "";
 const blocked = (a, b) =>
@@ -164,10 +170,13 @@ const blocked = (a, b) =>
     a,
   );
 function visibleVideo(id, user) {
-  return one(
+  const video = one(
     `SELECT v.* FROM videos v WHERE v.id=? AND ${visibility(user)}`,
     id,
   );
+  return video && (!video.parent_id || ancestryVisible(video.parent_id, user))
+    ? video
+    : null;
 }
 function videoOr404(req, res, next) {
   req.video = visibleVideo(req.params.id, uid(req));
@@ -225,15 +234,26 @@ function videos(where, args, user, limit = 200) {
     user,
     ...args,
     limit,
-  ).map((v) => ({
-    ...v,
-    video_url: `/api/media/${v.id}/video`,
-    thumbnail_url: `/api/media/${v.id}/thumbnail`,
-    hashtags: all(
-      "SELECT h.name FROM hashtags h JOIN video_hashtags vh ON vh.hashtag_id=h.id WHERE vh.video_id=?",
-      v.id,
-    ).map((h) => h.name),
-  }));
+  )
+    .filter((v) => !v.parent_id || ancestryVisible(v.parent_id, user))
+    .map((v) => ({
+      ...v,
+      video_url: `/api/media/${v.id}/video`,
+      thumbnail_url: `/api/media/${v.id}/thumbnail`,
+      hls_url: v.hls ? `/api/stream/${v.id}/master.m3u8` : null,
+      source: v.source_json ? JSON.parse(v.source_json) : null,
+      captions_url:
+        v.captions_status === "ready"
+          ? `/api/videos/${v.id}/captions.vtt`
+          : null,
+      parent: v.parent_id
+        ? one("SELECT id,caption,user_id FROM videos WHERE id=?", v.parent_id)
+        : null,
+      hashtags: all(
+        "SELECT h.name FROM hashtags h JOIN video_hashtags vh ON vh.hashtag_id=h.id WHERE vh.video_id=?",
+        v.id,
+      ).map((h) => h.name),
+    }));
 }
 function profileInfo(id, viewer) {
   const p = profile(id);
@@ -425,8 +445,16 @@ app.get("/api/feed", (req, res) => {
       " AND EXISTS(SELECT 1 FROM follows WHERE follower_id=? AND following_id=v.user_id)";
     args.push(uid(req));
   }
+  if (mode === "foryou" && req.user) {
+    where +=
+      " AND NOT EXISTS(SELECT 1 FROM feed_feedback f WHERE f.user_id=? AND ((f.kind='video' AND f.target=v.id) OR (f.kind='creator' AND f.target=v.user_id) OR (f.kind='category' AND f.target=v.category)))";
+    args.push(uid(req));
+  }
   const items = videos(where, args, uid(req));
-  const ranked = mode === "following" ? items : rankVideos(items, uid(req));
+  const ranked =
+    mode === "following"
+      ? items.map((v) => ({ ...v, reason: "From a creator you follow" }))
+      : rankVideos(items, uid(req));
   res.json({
     videos: ranked.slice(0, 8).map(({ score, ...v }) => v),
     hasMore: items.length > 8,
@@ -801,6 +829,11 @@ app.post(
           p.user_id,
         ).changes;
         if (changed) {
+          run(
+            "INSERT INTO follower_events(creator_id,follower_id,change) VALUES(?,?,1)",
+            p.user_id,
+            uid(req),
+          );
           notify(p.user_id, uid(req), "follow");
           const viewed = req.body.video_id
             ? visibleVideo(req.body.video_id, uid(req))
@@ -812,12 +845,19 @@ app.post(
           if (viewed && viewed.user_id === p.user_id)
             analytics(uid(req), viewed.id, "follow_after_watch");
         }
-      } else
-        run(
+      } else {
+        const removed = run(
           "DELETE FROM follows WHERE follower_id=? AND following_id=?",
           uid(req),
           p.user_id,
         );
+        if (removed.changes)
+          run(
+            "INSERT INTO follower_events(creator_id,follower_id,change) VALUES(?,?,-1)",
+            p.user_id,
+            uid(req),
+          );
+      }
     });
     res.json({ profile: profileInfo(p.user_id, uid(req)) });
   },
@@ -989,6 +1029,18 @@ app.post(
     transaction(() => {
       if (req.body.active) {
         run("INSERT OR IGNORE INTO blocks VALUES(?,?)", uid(req), id);
+        for (const f of all(
+          "SELECT * FROM follows WHERE (follower_id=? AND following_id=?) OR (follower_id=? AND following_id=?)",
+          uid(req),
+          id,
+          id,
+          uid(req),
+        ))
+          run(
+            "INSERT INTO follower_events(creator_id,follower_id,change) VALUES(?,?,-1)",
+            f.following_id,
+            f.follower_id,
+          );
         run(
           "DELETE FROM follows WHERE (follower_id=? AND following_id=?) OR (follower_id=? AND following_id=?)",
           uid(req),
@@ -1012,7 +1064,7 @@ const upload = multer({
   limits: {
     fileSize: 100 * 1024 * 1024,
     files: 1,
-    fields: 10,
+    fields: 30,
     fieldSize: 4096,
   },
   fileFilter: (req, file, cb) =>
@@ -1026,7 +1078,6 @@ const uploadRate = rateLimit({
   limit: 10,
   message: { error: "Upload limit reached. Try again in one hour." },
 });
-let activeUploads = 0;
 app.post(
   "/api/upload",
   requireAuth,
@@ -1039,55 +1090,18 @@ app.post(
         .status(400)
         .json({ error: "Select an MP4, MOV, or WebM video (up to 100 MB)." });
     try {
-      if (activeUploads >= 2)
-        return res.status(503).json({
-          error: "Video processing is busy. Please try again shortly.",
-        });
-      const parsed = z
-        .object({
-          caption: text(1000),
-          category: z.enum(categories),
-          hashtags: z.string().max(350).default(""),
-          privacy: z.enum(["public", "followers", "private"]).default("public"),
-          comments_enabled: z.enum(["true", "false"]).default("true"),
-          start: z.coerce.number().min(0).max(180).default(0),
-          end: z.coerce.number().min(1).max(180).optional(),
-          thumbnail: z.coerce.number().min(0).max(180).default(0),
-        })
-        .safeParse(req.body);
+      const parsed = optionsSchema(categories).safeParse(req.body);
       if (!parsed.success)
         return res.status(400).json({ error: parsed.error.issues[0].message });
-      const b = parsed.data,
-        id = randomUUID();
-      activeUploads++;
-      let media;
+      checkSource(parsed.data, uid(req), visibleVideo);
+      let job;
       try {
-        media = await processVideo(
-          req.file.path,
-          id,
-          b.start,
-          b.end,
-          b.thumbnail,
-        );
-      } finally {
-        activeUploads--;
+        job = await enqueue(req.file.path, uid(req), parsed.data);
+      } catch (e) {
+        e.status ||= 400;
+        throw e;
       }
-      transaction(() => {
-        run(
-          "INSERT INTO videos(id,user_id,caption,category,video_url,thumbnail_url,duration,privacy,comments_enabled) VALUES(?,?,?,?,?,?,?,?,?)",
-          id,
-          uid(req),
-          b.caption,
-          b.category,
-          media.video_url,
-          media.thumbnail_url,
-          media.duration,
-          b.privacy,
-          Number(b.comments_enabled === "true"),
-        );
-        addTags(id, b.hashtags.split(/[ ,#]+/).filter(Boolean));
-      });
-      res.status(201).json({ video: videos("v.id=?", [id], uid(req), 1)[0] });
+      res.status(202).json({ job });
     } finally {
       await unlink(req.file.path).catch(() => {});
     }
@@ -1165,6 +1179,14 @@ app.get("/api/avatars/:id", async (req, res) => {
     );
   }
   res.sendFile(resolve(mediaDir, basename(p.avatar)));
+});
+installFeatures(app, {
+  categories,
+  validate,
+  uid,
+  visibleVideo,
+  videoOr404,
+  videos,
 });
 app.use("/api", (req, res) =>
   res.status(404).json({ error: "Endpoint not found." }),

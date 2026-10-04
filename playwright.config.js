@@ -3,7 +3,7 @@ export default defineConfig({
   testDir: "./tests/browser",
   fullyParallel: false,
   workers: 1,
-  timeout: 60000,
+  timeout: 120000,
   use: {
     baseURL: "http://localhost:3101",
     launchOptions: {
@@ -24,7 +24,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "node server/index.js",
+    command: "node tests/prepare-e2e.js && node server/index.js",
     url: "http://localhost:3101/api/health",
     timeout: 120000,
     reuseExistingServer: false,

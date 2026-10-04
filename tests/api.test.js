@@ -13,6 +13,7 @@ process.env.NODE_ENV = "test";
 const { app } = await import("../server/app.js");
 const { one, run, db } = await import("../server/db.js");
 const { seed } = await import("../scripts/seed.js");
+const { startWorker, stopWorker } = await import("../server/jobs.js");
 const { rankVideos } = await import("../server/recommend.js");
 const a = request.agent(app),
   b = request.agent(app),
@@ -23,6 +24,19 @@ const aliceEmail = `alice${stamp}@example.invalid`,
   bobEmail = `bob${stamp}@example.invalid`;
 const aliceName = `alice_${stamp.toString().slice(-9)}`,
   bobName = `bob_${stamp.toString().slice(-9)}`;
+async function finishUpload(response, agent) {
+  const id = response.body.job.id;
+  for (let i = 0; i < 120; i++) {
+    const r = await agent.get(`/api/jobs/${id}`).expect(200);
+    if (r.body.job.status === "failed") throw new Error(r.body.job.error);
+    if (r.body.job.status === "completed") {
+      response.body.video = r.body.video;
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error("Upload did not complete.");
+}
 function emailToken(email, purpose) {
   const files = readdirSync("data/mail").map((f) =>
     JSON.parse(readFileSync(`data/mail/${f}`, "utf8")),
@@ -35,8 +49,10 @@ function emailToken(email, purpose) {
 }
 before(async () => {
   await seed();
+  startWorker();
 });
-after(() => {
+after(async () => {
+  await stopWorker();
   db.close();
   rmSync(dir, { recursive: true, force: true });
   for (const f of readdirSync("data/mail")) {
@@ -321,7 +337,8 @@ test("complete authenticated social flow and authorization", async (t) => {
         .field("end", "5")
         .field("thumbnail", "1")
         .attach("video", "data/media/seed-01.mp4", { contentType: "video/mp4" })
-        .expect(201);
+        .expect(202);
+      await finishUpload(d, a);
       uploadId = d.body.video.id;
       assert.equal(d.body.video.duration, 4);
       assert.ok(d.body.video.hashtags.includes("original"));
@@ -377,7 +394,8 @@ test("complete authenticated social flow and authorization", async (t) => {
         .field("privacy", "private")
         .field("comments_enabled", "false")
         .attach("video", "data/media/seed-02.mp4", { contentType: "video/mp4" })
-        .expect(201);
+        .expect(202);
+      await finishUpload(d, a);
       privateId = d.body.video.id;
       await b.get(`/api/videos/${privateId}`).expect(404);
       await guest.get(d.body.video.video_url).expect(404);

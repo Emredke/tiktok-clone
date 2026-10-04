@@ -218,7 +218,7 @@ export async function seed() {
           )
         )
           run(
-            "INSERT INTO video_views(video_id,user_id,watch_seconds,completion,completed,rewatches,skip_seconds) VALUES(?,?,?,?,?,?,?)",
+            "INSERT INTO video_views(video_id,user_id,watch_seconds,completion,completed,rewatches,skip_seconds,is_demo) VALUES(?,?,?,?,?,?,?,1)",
             id,
             viewer,
             5 + (j % 4),

@@ -12,11 +12,14 @@
     "build": "vite build",
     "start": "NODE_ENV=production node --env-file-if-exists=.env server/index.js",
     "seed": "node --env-file-if-exists=.env scripts/seed.js",
-    "test": "node --test tests/*.test.js",
+    "test": "node --test --test-concurrency=1 tests/*.test.js",
     "test:e2e": "playwright test",
     "check": "npm run build && npm test",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "import:videos": "node --env-file-if-exists=.env scripts/import-videos.js",
+    "admin": "node --env-file-if-exists=.env scripts/admin.js",
+    "captions:setup": "sh scripts/setup-captions.sh"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.0.0",
@@ -25,6 +28,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.0.0",
     "helmet": "^8.0.0",
+    "hls.js": "^1.7.3",
     "lucide-react": "^0.577.0",
     "multer": "^2.0.2",
     "nodemailer": "^10.0.14",

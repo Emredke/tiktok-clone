@@ -1,3 +1,11 @@
+import {
+  CreationTools,
+  Interests,
+  Studio,
+  Moderation,
+  VideoExtras,
+  formOptions,
+} from "./features.jsx";
 import React, {
   useState,
   useEffect,
@@ -139,7 +147,7 @@ function Spinner() {
 function App() {
   const [user, setUser] = useState(null),
     [ready, setReady] = useState(false),
-    [route, setRoute] = useState(location.pathname),
+    [route, setRoute] = useState(location.pathname + location.search),
     [auth, setAuth] = useState(null),
     [toast, setToast] = useState(""),
     [modal, setModal] = useState(null),
@@ -165,7 +173,7 @@ function App() {
   );
   const requireUser = (fn) => (user ? run(fn) : setAuth("login"));
   useEffect(() => {
-    const pop = () => setRoute(location.pathname);
+    const pop = () => setRoute(location.pathname + location.search);
     addEventListener("popstate", pop);
     api("/auth/me")
       .then((d) => setUser(d.user))
@@ -226,8 +234,9 @@ function App() {
     setUnread,
   };
   const pathname = route.split("?")[0];
-  let page =
-    pathname === "/discover"
+  let page = ["/studio", "/moderation", "/preferences"].includes(pathname)
+    ? pathname.slice(1)
+    : pathname === "/discover"
       ? "discover"
       : pathname === "/create"
         ? "create"
@@ -270,6 +279,24 @@ function App() {
               </button>
             ))}
           </nav>
+          {user && (
+            <div className="extra-nav">
+              <button onClick={() => navigate("/studio")}>
+                <Camera size={19} />
+                Creator Studio
+              </button>
+              <button onClick={() => navigate("/preferences")}>
+                <Settings size={19} />
+                Feed preferences
+              </button>
+              {user.role === "admin" && (
+                <button onClick={() => navigate("/moderation")}>
+                  <Flag size={19} />
+                  Moderation
+                </button>
+              )}
+            </div>
+          )}
           <div className="sidebar-bottom">
             {user ? (
               <button className="account" onClick={() => nav("profile")}>
@@ -308,8 +335,16 @@ function App() {
             />
           ) : page === "discover" ? (
             <Discover key={route} />
+          ) : page === "studio" ? (
+            <Studio app={value} />
+          ) : page === "moderation" ? (
+            <Moderation app={value} />
+          ) : page === "preferences" ? (
+            <section className="content-page">
+              <Interests app={value} />
+            </section>
           ) : page === "create" ? (
-            <Create />
+            <Create key={route} />
           ) : page === "inbox" ? (
             <Notifications />
           ) : (
@@ -348,6 +383,18 @@ function App() {
           <Auth mode={auth} setMode={setAuth} onClose={() => setAuth(null)} />
         )}
         {modal && <Modal modal={modal} onClose={() => setModal(null)} />}
+        {ready && user && !user.onboarded && !auth && (
+          <div className="modal-backdrop">
+            <section
+              className="sheet onboarding-sheet"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Choose your interests"
+            >
+              <Interests app={value} onboarding onDone={() => {}} />
+            </section>
+          </div>
+        )}
       </div>
     </Context.Provider>
   );
@@ -550,6 +597,48 @@ function VideoCard({ video: v, active, nearby, index, patch }) {
     [busy, setBusy] = useState(false),
     [progress, setProgress] = useState(0),
     [playError, setPlayError] = useState(false);
+  const [captionsOn, setCaptionsOn] = useState(true);
+  useEffect(() => {
+    const video = ref.current;
+    if (!video || !nearby || !v.hls_url) return;
+    let hls,
+      cancelled = false;
+    if (video.canPlayType("application/vnd.apple.mpegurl"))
+      video.src = v.hls_url;
+    else
+      import("hls.js")
+        .then(({ default: Hls }) => {
+          if (cancelled) return;
+          if (Hls.isSupported()) {
+            hls = new Hls({
+              enableWorker: false,
+              startLevel: 0,
+              maxBufferLength: 10,
+              maxMaxBufferLength: 20,
+            });
+            hls.loadSource(v.hls_url);
+            hls.attachMedia(video);
+            hls.on(Hls.Events.ERROR, (_, d) => {
+              if (d.fatal) {
+                hls.destroy();
+                video.src = v.video_url;
+                video.play().catch(() => {});
+              }
+            });
+          } else video.src = v.video_url;
+        })
+        .catch(() => {
+          if (!cancelled) video.src = v.video_url;
+        });
+    return () => {
+      cancelled = true;
+      hls?.destroy();
+    };
+  }, [nearby, v.id, v.hls_url]);
+  useEffect(() => {
+    if (ref.current?.textTracks?.[0])
+      ref.current.textTracks[0].mode = captionsOn ? "showing" : "hidden";
+  }, [captionsOn, v.captions_url]);
   const flush = useCallback(() => {
     const m = meter.current;
     if (m.seconds > 0.25) {
@@ -668,7 +757,7 @@ function VideoCard({ video: v, active, nearby, index, patch }) {
     <article className="video-card" data-index={index} data-video-id={v.id}>
       <video
         ref={ref}
-        src={nearby ? v.video_url : undefined}
+        src={nearby && !v.hls_url ? v.video_url : undefined}
         poster={v.thumbnail_url}
         loop
         playsInline
@@ -681,7 +770,10 @@ function VideoCard({ video: v, active, nearby, index, patch }) {
           setBuffering(false);
           setNeedsPlay(false);
         }}
-        onLoadedData={() => setBuffering(false)}
+        onLoadedData={() => {
+          setBuffering(false);
+          if (active) ref.current?.play().catch(() => setNeedsPlay(true));
+        }}
         onError={() => {
           if (nearby) setPlayError(true);
         }}
@@ -689,7 +781,17 @@ function VideoCard({ video: v, active, nearby, index, patch }) {
           meter.current.last = 0;
         }}
         onTimeUpdate={updateMeter}
-      />
+      >
+        {v.captions_url && (
+          <track
+            kind="captions"
+            src={v.captions_url}
+            srcLang="en"
+            label="Speech captions"
+            default={captionsOn}
+          />
+        )}
+      </video>
       <div className="video-shade" />
       {buffering && active && !playError && (
         <div className="video-spinner">
@@ -725,8 +827,23 @@ function VideoCard({ video: v, active, nearby, index, patch }) {
         <Heart className="heart-burst" fill="#fff" strokeWidth={0} size={110} />
       )}
       <div className="video-top">
+        {v.captions_url && (
+          <button
+            className="caption-toggle"
+            aria-label="Toggle captions"
+            aria-pressed={captionsOn}
+            onClick={() => setCaptionsOn((x) => !x)}
+          >
+            CC
+          </button>
+        )}
         <span className="original-label">
-          <span /> {v.demo ? "VELO ORIGINALS" : v.category.toUpperCase()}
+          <span />{" "}
+          {v.source
+            ? "REAL FOOTAGE · OPEN ARCHIVE"
+            : v.demo
+              ? "VELO ORIGINALS"
+              : v.category.toUpperCase()}
         </span>
         <IconButton
           icon={muted ? VolumeX : Volume2}
@@ -812,6 +929,24 @@ function VideoCard({ video: v, active, nearby, index, patch }) {
             </button>
           ))}
         </div>
+        {v.source && (
+          <a
+            className="inline-credit"
+            href={v.source.page}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Footage: {v.source.author} · {v.source.license}
+          </a>
+        )}
+        {v.parent && (
+          <button
+            className="inline-credit"
+            onClick={() => navigate(`/v/${v.parent.id}`)}
+          >
+            {v.remix_mode === "duet" ? "Duet" : "Remix"} · watch original
+          </button>
+        )}
         <div className="audio-row">
           <Music2 size={14} />
           <span>{v.audio}</span>
@@ -864,7 +999,7 @@ function FeedAside({ active }) {
           <span className="tag-number">0{i + 1}</span>
           <span>
             <strong>#{t.name}</strong>
-            <small>{t.videos_count} original videos</small>
+            <small>{t.videos_count} videos</small>
           </span>
           <ArrowUpRight size={17} />
         </button>
@@ -873,8 +1008,8 @@ function FeedAside({ active }) {
         <span className="live-dot" /> MADE FOR YOUR KIND OF CURIOUS
       </div>
       <p className="demo-note">
-        The launch collection features original motion studies and fictional
-        demo creators. Add your own moments with Create.
+        Explore real footage with credits, original motion studies, and your
+        community’s moments. Add yours with Create.
       </p>
     </aside>
   );
@@ -1279,6 +1414,27 @@ function Profile({ username }) {
           />
         )}
       </div>
+      {owner && (
+        <div className="profile-tools">
+          <button className="secondary" onClick={() => navigate("/studio")}>
+            Creator Studio
+          </button>
+          <button
+            className="secondary"
+            onClick={() => navigate("/preferences")}
+          >
+            Feed preferences
+          </button>
+          {user.role === "admin" && (
+            <button
+              className="secondary"
+              onClick={() => navigate("/moderation")}
+            >
+              Moderation
+            </button>
+          )}
+        </div>
+      )}
       <div className="profile-header">
         <Avatar person={p} size={104} />
         <div>
@@ -1551,6 +1707,18 @@ function Notifications() {
 }
 function Create() {
   const { user, setAuth, config, notify, navigate } = useApp();
+  const params = new URLSearchParams(location.search);
+  const sourceId = params.get("source"),
+    remixMode = params.get("mode");
+  const [source, setSource] = useState(null);
+  useEffect(() => {
+    if (sourceId)
+      api(`/videos/${sourceId}`)
+        .then((d) => setSource(d.video))
+        .catch((e) => notify(e.message));
+  }, [sourceId]);
+  const [jobId, setJobId] = useState(null),
+    [stage, setStage] = useState("");
   const [file, setFile] = useState(null),
     [url, setUrl] = useState(""),
     [duration, setDuration] = useState(0),
@@ -1675,16 +1843,45 @@ function Create() {
     setBusy(true);
     setError("");
     setProgress(0);
+    setStage("");
+    setJobId(null);
     const form = new FormData(e.target);
     form.set("video", file);
+    form.set("mode", e.nativeEvent.submitter?.value || "publish");
+    for (const name of ["mute", "auto_captions", "allow_duet", "allow_remix"])
+      form.set(name, String(form.has(name)));
+    if (sourceId) {
+      form.set("parent_id", sourceId);
+      form.set("remix_mode", remixMode);
+    }
     form.set("comments_enabled", String(form.has("comments_enabled")));
     form.set("start", String(trim[0]));
     form.set("end", String(trim[1]));
     form.set("thumbnail", String(thumb));
     try {
       const d = await uploadFile("/upload", form, setProgress);
-      notify("Your moment is live.");
-      navigate(`/v/${d.video.id}`);
+      setJobId(d.job.id);
+      if (d.job.status === "draft") {
+        notify("Draft saved. You can finish it in Studio.");
+        navigate("/studio");
+        return;
+      }
+      setStage("Your video is queued for processing.");
+      for (let attempt = 0; attempt < 240 && alive.current; attempt++) {
+        await new Promise((r) => setTimeout(r, 1500));
+        const result = await api(`/jobs/${d.job.id}`);
+        setStage(`${result.job.status} · ${result.job.progress}%`);
+        if (result.job.status === "failed") throw new Error(result.job.error);
+        if (result.job.status === "completed") {
+          notify(result.job.error || "Your moment is live.");
+          navigate(`/v/${result.video.id}`);
+          return;
+        }
+      }
+      if (alive.current) {
+        notify("Processing continues in Creator Studio.");
+        navigate("/studio");
+      }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -1715,6 +1912,33 @@ function Create() {
         <div className="verification-note">
           <Mail size={20} />
           <span>Check your email to verify your account before posting.</span>
+        </div>
+      )}
+      {sourceId && (
+        <div className="collaboration-banner">
+          <h3>{remixMode === "duet" ? "Create a duet" : "Remix a moment"}</h3>
+          {source && (
+            <>
+              <video
+                src={source.video_url}
+                poster={source.thumbnail_url}
+                controls
+                playsInline
+              />
+              <p>
+                Original by @{source.username}.{" "}
+                {remixMode === "duet"
+                  ? "Your video appears beside the original."
+                  : "Up to 8 seconds of the original play before your response."}
+              </p>
+              {source.source && (
+                <p className="small-note">
+                  Original footage: {source.source.author} ·{" "}
+                  {source.source.license}
+                </p>
+              )}
+            </>
+          )}
         </div>
       )}
       <form onSubmit={post} className="create-layout">
@@ -1872,6 +2096,7 @@ function Create() {
             <input name="comments_enabled" type="checkbox" defaultChecked />
             Allow comments
           </label>
+          <CreationTools />
           <div className="posting-note">
             Only post videos you created or have permission to share.
           </div>
@@ -1883,16 +2108,36 @@ function Create() {
           {progress !== null && (
             <div className="upload-progress">
               <span>
-                {progress < 100
-                  ? `Uploading ${progress}%`
-                  : "Processing your video…"}
+                {stage ||
+                  (progress < 100
+                    ? `Uploading ${progress}%`
+                    : "Saving your upload…")}
               </span>
               <div>
                 <i style={{ width: `${progress}%` }} />
               </div>
             </div>
           )}
+          {jobId && (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => navigate("/studio")}
+            >
+              Continue in Studio
+            </button>
+          )}
           <button
+            className="secondary"
+            name="mode"
+            value="draft"
+            disabled={busy || recording || !file || !user.verified}
+          >
+            Save draft
+          </button>
+          <button
+            name="mode"
+            value="publish"
             className="primary"
             disabled={busy || recording || !file || !user.verified}
           >
@@ -2397,6 +2642,7 @@ function Blocked() {
   );
 }
 function Options({ modal: m, onClose }) {
+  const app = useApp();
   const { user, navigate, requireUser, notify } = useApp();
   const v = m.video,
     p = m.profile;
@@ -2423,6 +2669,7 @@ function Options({ modal: m, onClose }) {
   return (
     <>
       <h2>{v ? "Video options" : "Creator options"}</h2>
+      {v && <VideoExtras app={app} video={v} onClose={onClose} />}
       <div className="options-list">
         <button onClick={() => report(v ? "video" : "user")}>
           <Flag size={20} />
