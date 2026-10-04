@@ -72,7 +72,7 @@ React + Vite → same-origin Express API → SQLite (WAL, foreign keys, indexes)
 - `scripts/seed.js`: deterministic original media and sample social activity.
 - `tests/`: real integration and browser regression suites.
 
-The database contains users, profiles, videos, video_views, likes, comments, comment_likes, follows, bookmarks, shares, hashtags, video_hashtags, notifications, messages, sessions, auth_tokens, blocks, and reports. Foreign keys and composite uniqueness prevent orphaned interactions and duplicate likes/follows. Permissions are enforced in the API; this SQLite deployment does not have database row-level security.
+The database contains users, profiles, videos, video_views, likes, comments, comment_likes, follows, bookmarks, shares, hashtags, video_hashtags, notifications, messages, sessions, auth_tokens, blocks, reports, and analytics_events. Foreign keys and composite uniqueness prevent orphaned interactions and duplicate likes/follows. Permissions are enforced in the API; this SQLite deployment does not have database row-level security.
 
 **Deployment scope:** one application instance with a persistent SQLite volume. WAL and indexes are appropriate for an early-stage single-service deployment. For multiple application replicas, migrate the relational layer to PostgreSQL, use a shared rate-limit/session cleanup service, and put transcoding on a job queue. S3 already separates media capacity from database size. There is no claim of load-tested internet-scale capacity.
 
@@ -121,11 +121,11 @@ Candidates are limited to a recent pool of 200 visible, unblocked videos, exclud
 - Followed creators, aggregate completion and engagement quality, logarithmic popularity, and exponential freshness decay.
 - A small deterministic daily exploration bonus for 10% of candidates, preserving discovery without randomizing the feed.
 
-Affinity is bounded with `tanh`, so one session cannot dominate the score indefinitely. Already viewed videos lose four points per prior viewing. Skips under two seconds with less than 20% completion contribute negative affinity. The `video_views` table records seconds watched, maximum completion, completed flag, loops, and skip duration. View signals flush when a video leaves the active viewport, the tab hides, or the component unmounts. Follow and interaction tables supply additional signals. The isolated ranker can later be replaced by a learned model without changing the feed API.
+Affinity is bounded with `tanh`, so one session cannot dominate the score indefinitely. Already viewed videos lose four points per prior viewing. Skips under two seconds with less than 20% completion contribute negative affinity. The `video_views` table records seconds watched, maximum completion, completed flag, loops, and skip duration. View signals flush when a video leaves the active viewport, the tab hides, or the component unmounts. The analytics_events table also records view/completion, rewatch/skip, like, comment, save, share, and follow-after-watch events; bookmark and follow tables supply additional signals. The isolated ranker can later be replaced by a learned model without changing the feed API.
 
 ## Security and moderation
 
-Server-side validation uses Zod and prepared database statements. Mutations require same-origin JSON or multipart requests; cross-site fetch metadata and mismatched origins are rejected. React escapes user content. Helmet sets a restrictive content security policy. APIs, account attempts, and uploads have rate limits. Requests are size-limited. Profile/video/comment ownership, collection privacy, follower visibility, and bilateral blocks are checked server-side. Auth cookies are never readable by frontend JavaScript.
+Server-side validation uses Zod and prepared database statements. Mutations require same-origin JSON or multipart requests; cross-site fetch metadata and mismatched origins are rejected. React escapes user content. Helmet sets a restrictive content security policy. APIs, account attempts, uploads, and media delivery have separate rate limits. General API limits identify authenticated users independently; anonymous and authentication attempts are limited by IP. Requests are size-limited. Profile/video/comment ownership, collection privacy, follower visibility, and bilateral blocks are checked server-side. Auth cookies are never readable by frontend JavaScript.
 
 Reports are stored with target type/ID, reason, reporter, creation time, and moderation status. A separate admin dashboard can be built against this queue; no unrestricted admin endpoint is exposed. Administrators can review the database through trusted operational tooling. Public launch still requires your own operational moderation process and policy.
 
@@ -142,7 +142,7 @@ The integration suite uses a disposable database, validates seed completeness/id
 
 The browser suite starts a separate test server/database on port 3101. It tests actual playback, signup/verification, scroll-and-pause, social actions, search, profile editing, upload/playback, notifications, logout/login, persistent sessions, console errors, and horizontal overflow. Test accounts stay in the ignored `data/e2e.sqlite` database; delete that database when no longer needed. Screenshots/traces of failures go into `test-results/`.
 
-GitHub Actions runs builds, security audit, integration tests, and the two browser layouts on every main-branch push and pull request. Tests use local storage and development email; production SMTP and your chosen S3 provider require environment-specific deployment verification. Chromium testing does not substitute for device testing on Safari/iOS or camera testing on physical phones.
+GitHub Actions runs builds, security audit, integration tests, and the four browser checks across two layouts on every main-branch push and pull request. The Docker deployment definition is included; Docker was unavailable in the local verification environment. Tests use local storage and development email; production SMTP and your chosen S3 provider require environment-specific deployment verification. Camera recording is exercised with a synthetic browser camera. Chromium testing does not substitute for device testing on Safari/iOS or camera testing on physical phones.
 
 ## Deploy
 

@@ -1,0 +1,16 @@
+services:
+  velo:
+    build: .
+    ports:
+      - "3001:3001"
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_PATH: /app/data/velo.sqlite
+      MEDIA_DIR: /app/data/media
+    volumes:
+      - velo-data:/app/data
+    restart: unless-stopped
+volumes:
+  velo-data:
