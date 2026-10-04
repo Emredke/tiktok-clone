@@ -50,7 +50,9 @@ test("real user flow: signup → verify → watch → interact → search → pr
     .click();
   await expect(auth).toHaveCount(0);
   await page.goto(mail(email, "verify").url);
-  await expect(page.getByRole("status")).toContainText("Email verified");
+  await expect(
+    page.getByRole("status").filter({ hasText: "Email verified" }),
+  ).toBeVisible();
   if (
     await page
       .getByRole("button", { name: "Start exploring", exact: true })
