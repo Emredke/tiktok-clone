@@ -6,6 +6,7 @@ export function migrate(db) {
       suspended_until: "INTEGER NOT NULL DEFAULT 0",
       onboarded: "INTEGER NOT NULL DEFAULT 0",
     },
+    messages: { reply_id: "TEXT REFERENCES messages(id) ON DELETE SET NULL" },
     video_views: { is_demo: "INTEGER NOT NULL DEFAULT 0" },
     videos: {
       status: "TEXT NOT NULL DEFAULT 'ready'",
@@ -16,6 +17,7 @@ export function migrate(db) {
       source_json: "TEXT",
       captions_json: "TEXT NOT NULL DEFAULT '[]'",
       captions_status: "TEXT NOT NULL DEFAULT 'off'",
+      audio_source_json: "TEXT",
       hls: "INTEGER NOT NULL DEFAULT 0",
     },
   };

@@ -1,4 +1,11 @@
 import {
+  Library,
+  Chat,
+  AccountSettings,
+  Collect,
+  CreatorPlaylists,
+} from "./community.jsx";
+import {
   CreationTools,
   Interests,
   Studio,
@@ -70,6 +77,7 @@ const descriptions = {
   comment: "commented on your video",
   reply: "replied to your comment",
   comment_like: "liked your comment",
+  upload: "posted a new video",
 };
 const format = (n) =>
   n >= 1000 ? `${(n / 1000).toFixed(1).replace(".0", "")}K` : String(n || 0);
@@ -216,10 +224,18 @@ function App() {
         )
         .catch(() => {});
     refresh();
+    const events = new EventSource("/api/live");
+    events.addEventListener("refresh", () => {
+      refresh();
+      window.dispatchEvent(new Event("velo-refresh"));
+    });
     const id = setInterval(() => {
       if (!document.hidden) refresh();
     }, 30000);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id);
+      events.close();
+    };
   }, [user]);
   const value = {
     user,
@@ -234,7 +250,14 @@ function App() {
     setUnread,
   };
   const pathname = route.split("?")[0];
-  let page = ["/studio", "/moderation", "/preferences"].includes(pathname)
+  let page = [
+    "/studio",
+    "/moderation",
+    "/preferences",
+    "/library",
+    "/chat",
+    "/settings",
+  ].includes(pathname)
     ? pathname.slice(1)
     : pathname === "/discover"
       ? "discover"
@@ -281,6 +304,18 @@ function App() {
           </nav>
           {user && (
             <div className="extra-nav">
+              <button onClick={() => navigate("/library")}>
+                <Bookmark size={19} />
+                Your Library
+              </button>
+              <button onClick={() => navigate("/chat")}>
+                <Send size={19} />
+                Conversations
+              </button>
+              <button onClick={() => navigate("/settings")}>
+                <Settings size={19} />
+                Privacy & notifications
+              </button>
               <button onClick={() => navigate("/studio")}>
                 <Camera size={19} />
                 Creator Studio
@@ -331,8 +366,14 @@ function App() {
           ) : page === "home" ? (
             <Feed
               key={route + "-" + (user?.user_id || "guest")}
-              videoId={route.startsWith("/v/") ? route.slice(3) : null}
+              videoId={pathname.startsWith("/v/") ? pathname.slice(3) : null}
             />
+          ) : page === "library" ? (
+            <Library app={value} />
+          ) : page === "chat" ? (
+            <Chat app={value} />
+          ) : page === "settings" ? (
+            <AccountSettings app={value} />
           ) : page === "discover" ? (
             <Discover key={route} />
           ) : page === "studio" ? (
@@ -598,6 +639,7 @@ function VideoCard({ video: v, active, nearby, index, patch }) {
     [progress, setProgress] = useState(0),
     [playError, setPlayError] = useState(false);
   const [captionsOn, setCaptionsOn] = useState(true);
+  const resumed = useRef(false);
   useEffect(() => {
     const video = ref.current;
     if (!video || !nearby || !v.hls_url) return;
@@ -646,6 +688,10 @@ function VideoCard({ video: v, active, nearby, index, patch }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          position: Math.min(
+            180,
+            Math.max(0, ref.current?.currentTime ?? m.time),
+          ),
           watch_seconds: Math.min(3600, m.seconds),
           completion: m.completion,
           rewatches: Math.min(100, m.loops),
@@ -679,7 +725,11 @@ function VideoCard({ video: v, active, nearby, index, patch }) {
       } else if (active) ref.current?.play().catch(() => setNeedsPlay(true));
     };
     document.addEventListener("visibilitychange", visibility);
-    return () => document.removeEventListener("visibilitychange", visibility);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", visibility);
+      window.removeEventListener("pagehide", flush);
+    };
   }, [active, flush]);
   useEffect(() => () => clearTimeout(timer.current), []);
   const updateMeter = () => {
@@ -769,6 +819,19 @@ function VideoCard({ video: v, active, nearby, index, patch }) {
         onPlaying={() => {
           setBuffering(false);
           setNeedsPlay(false);
+        }}
+        onLoadedMetadata={(e) => {
+          if (resumed.current || location.pathname !== `/v/${v.id}`) return;
+          const position = Number(
+            new URLSearchParams(location.search).get("resume"),
+          );
+          if (Number.isFinite(position) && position > 0) {
+            e.currentTarget.currentTime = Math.min(
+              position,
+              Math.max(0, e.currentTarget.duration - 0.1),
+            );
+            resumed.current = true;
+          }
         }}
         onLoadedData={() => {
           setBuffering(false);
@@ -1335,6 +1398,7 @@ function Auth({ mode, setMode, onClose }) {
   );
 }
 function Profile({ username }) {
+  const profileApp = useApp();
   const { user, setUser, run, requireUser, navigate, setModal, notify } =
     useApp();
   const [p, setP] = useState(null),
@@ -1398,6 +1462,20 @@ function Profile({ username }) {
               label="Log out"
               onClick={() =>
                 run(async () => {
+                  if ("serviceWorker" in navigator) {
+                    const registration =
+                      await navigator.serviceWorker.getRegistration();
+                    const subscription =
+                      await registration?.pushManager.getSubscription();
+                    if (subscription) {
+                      await api(
+                        "/push/subscriptions",
+                        { endpoint: subscription.endpoint },
+                        "DELETE",
+                      );
+                      await subscription.unsubscribe();
+                    }
+                  }
                   await api("/auth/logout", {});
                   setUser(null);
                   navigate("/");
@@ -1416,6 +1494,12 @@ function Profile({ username }) {
       </div>
       {owner && (
         <div className="profile-tools">
+          <button className="secondary" onClick={() => navigate("/library")}>
+            Your Library
+          </button>
+          <button className="secondary" onClick={() => navigate("/settings")}>
+            Privacy & notifications
+          </button>
           <button className="secondary" onClick={() => navigate("/studio")}>
             Creator Studio
           </button>
@@ -1435,6 +1519,16 @@ function Profile({ username }) {
           )}
         </div>
       )}
+      {!owner && user && (
+        <button
+          className="secondary"
+          onClick={() => navigate(`/chat?to=${encodeURIComponent(p.username)}`)}
+        >
+          <Send size={16} />
+          Message
+        </button>
+      )}
+      <CreatorPlaylists username={username} app={profileApp} />
       <div className="profile-header">
         <Avatar person={p} size={104} />
         <div>
@@ -1621,7 +1715,10 @@ function Notifications() {
         </button>
       </Empty>
     );
-  const list = tab === "activity" ? data?.notifications : data?.messages;
+  const list =
+    tab === "activity"
+      ? data?.notifications
+      : data?.messages.filter((m) => m.video_id);
   const read = async () => {
     try {
       await api("/inbox/read", { all: true });
@@ -1638,6 +1735,10 @@ function Notifications() {
       <h1>
         In the loop<span>.</span>
       </h1>
+      <button className="secondary" onClick={() => navigate("/chat")}>
+        <Send size={18} />
+        Open conversations
+      </button>
       <div className="inbox-heading">
         <div className="profile-tabs">
           <button
@@ -1849,6 +1950,12 @@ function Create() {
     setStage("");
     setJobId(null);
     const form = new FormData(e.target);
+    if (form.get("audio_busy") === "true") {
+      setBusy(false);
+      setProgress(null);
+      return notify("Finish your voice recording before saving.");
+    }
+    form.delete("audio_busy");
     form.set("video", file);
     form.set("mode", e.nativeEvent.submitter?.value || "publish");
     for (const name of ["mute", "auto_captions", "allow_duet", "allow_remix"])
@@ -2159,6 +2266,7 @@ function Create() {
   );
 }
 function Modal({ modal: m, onClose }) {
+  const app = useApp();
   useEffect(() => {
     const handler = (e) => {
       if (e.key === "Escape") onClose();
@@ -2182,7 +2290,9 @@ function Modal({ modal: m, onClose }) {
           className="modal-close"
           onClick={onClose}
         />
-        {m.type === "comments" ? (
+        {m.type === "collect" ? (
+          <Collect video={m.video} app={app} onClose={onClose} />
+        ) : m.type === "comments" ? (
           <Comments video={m.video} patch={m.patch} />
         ) : m.type === "share" ? (
           <Share video={m.video} patch={m.patch} />

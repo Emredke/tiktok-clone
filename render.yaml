@@ -1,0 +1,52 @@
+# One instance: SQLite, background encoding, and backup scheduling share this disk.
+services:
+  - type: web
+    name: velo
+    runtime: docker
+    plan: standard
+    healthCheckPath: /api/health
+    disk:
+      name: velo-data
+      mountPath: /app/data
+      sizeGB: 20
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3001"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: APP_ORIGIN
+        sync: false
+      - key: MAIL_MODE
+        value: smtp
+      - key: SMTP_HOST
+        value: smtp.resend.com
+      - key: SMTP_PORT
+        value: "465"
+      - key: SMTP_USER
+        value: resend
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: STORAGE_DRIVER
+        value: s3
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_REGION
+        value: us-east-1
+      - key: S3_ENDPOINT
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: BACKUPS_ENABLED
+        value: "1"
+      - key: VAPID_SUBJECT
+        sync: false
+      - key: SEED_DEMOS
+        value: "0"
+      - key: IMPORT_REAL_VIDEOS
+        value: "1"

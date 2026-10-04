@@ -1,3 +1,7 @@
+import { installSounds } from "./sounds.js";
+import { installPush } from "./push.js";
+import { installCommunity } from "./community.js";
+import { notify, settings, sendMessage, pair, live } from "./social.js";
 import { ancestryVisible } from "./policy.js";
 import { installFeatures } from "./features.js";
 import { enqueue, optionsSchema, checkSource } from "./jobs.js";
@@ -183,18 +187,7 @@ function videoOr404(req, res, next) {
   if (!req.video) return res.status(404).json({ error: "Video unavailable." });
   next();
 }
-function notify(user, actor, type, video = null, comment = null) {
-  if (user !== actor && !blocked(user, actor))
-    run(
-      "INSERT INTO notifications(id,user_id,actor_id,type,video_id,comment_id) VALUES(?,?,?,?,?,?)",
-      randomUUID(),
-      user,
-      actor,
-      type,
-      video,
-      comment,
-    );
-}
+
 function analytics(user, video, event, value = 1) {
   run(
     "INSERT INTO analytics_events(user_id,video_id,event,value) VALUES(?,?,?,?)",
@@ -241,6 +234,9 @@ function videos(where, args, user, limit = 200) {
       video_url: `/api/media/${v.id}/video`,
       thumbnail_url: `/api/media/${v.id}/thumbnail`,
       hls_url: v.hls ? `/api/stream/${v.id}/master.m3u8` : null,
+      audio_source: v.audio_source_json
+        ? JSON.parse(v.audio_source_json)
+        : null,
       source: v.source_json ? JSON.parse(v.source_json) : null,
       captions_url:
         v.captions_status === "ready"
@@ -562,6 +558,7 @@ app.post(
   videoOr404,
   validate(
     z.object({
+      position: z.number().min(0).max(180).optional(),
       watch_seconds: z.number().min(0).max(3600),
       completion: z.number().min(0).max(1),
       rewatches: z.number().int().min(0).max(100),
@@ -580,6 +577,23 @@ app.post(
       b.rewatches,
       b.skip_seconds,
     );
+    if (
+      req.user &&
+      settings(uid(req)).history_enabled &&
+      req.user.suspended_until <= Date.now()
+    ) {
+      run(
+        "INSERT INTO watch_history(user_id,video_id,position) VALUES(?,?,?) ON CONFLICT(user_id,video_id) DO UPDATE SET position=excluded.position,watched_at=CURRENT_TIMESTAMP",
+        uid(req),
+        req.video.id,
+        Math.min(req.video.duration, b.position ?? 0),
+      );
+      run(
+        "DELETE FROM watch_history WHERE user_id=? AND video_id NOT IN (SELECT video_id FROM watch_history WHERE user_id=? ORDER BY watched_at DESC,video_id LIMIT 1000)",
+        uid(req),
+        uid(req),
+      );
+    }
     analytics(uid(req), req.video.id, "view", b.watch_seconds);
     if (b.completion >= 0.95)
       analytics(uid(req), req.video.id, "completed_view");
@@ -622,12 +636,11 @@ app.post(
           e.status = 403;
           throw e;
         }
-        run(
-          "INSERT INTO messages(id,sender_id,recipient_id,video_id) VALUES(?,?,?,?)",
-          randomUUID(),
+        sendMessage(
           uid(req),
           p.user_id,
-          req.video.id,
+          { video_id: req.video.id },
+          visibleVideo,
         );
       }
       run(
@@ -957,10 +970,18 @@ app.post(
           "UPDATE notifications SET read_at=CURRENT_TIMESTAMP WHERE user_id=? AND read_at IS NULL",
           uid(req),
         );
-        run(
-          "UPDATE messages SET read_at=CURRENT_TIMESTAMP WHERE recipient_id=? AND read_at IS NULL",
+        for (const m of all(
+          "SELECT id,sender_id FROM messages WHERE recipient_id=? AND read_at IS NULL",
           uid(req),
-        );
+        )) {
+          if (pair(uid(req), m.sender_id).accepted) {
+            run(
+              "UPDATE messages SET read_at=CURRENT_TIMESTAMP WHERE id=?",
+              m.id,
+            );
+            live(m.sender_id);
+          }
+        }
       }
       for (const id of req.body.ids) {
         run(
@@ -968,11 +989,15 @@ app.post(
           id,
           uid(req),
         );
-        run(
-          "UPDATE messages SET read_at=CURRENT_TIMESTAMP WHERE id=? AND recipient_id=?",
+        const m = one(
+          "SELECT sender_id FROM messages WHERE id=? AND recipient_id=?",
           id,
           uid(req),
         );
+        if (m && pair(uid(req), m.sender_id).accepted) {
+          run("UPDATE messages SET read_at=CURRENT_TIMESTAMP WHERE id=?", id);
+          live(m.sender_id);
+        }
       }
     });
     res.json({ ok: true });
@@ -1183,6 +1208,9 @@ app.get("/api/avatars/:id", async (req, res) => {
   }
   res.sendFile(resolve(mediaDir, basename(p.avatar)));
 });
+installSounds(app);
+installPush(app, { validate, uid });
+installCommunity(app, { validate, uid, visibleVideo, videos });
 installFeatures(app, {
   categories,
   validate,

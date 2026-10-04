@@ -12,9 +12,18 @@ if (process.env.NODE_ENV === "production") {
     throw new Error("Configure production S3 object storage.");
 }
 const { seed } = await import("../scripts/seed.js");
-await seed();
+if (
+  process.env.SEED_DEMOS !== "0" &&
+  (process.env.NODE_ENV !== "production" || process.env.SEED_DEMOS === "1")
+)
+  await seed();
 const { startWorker, stopWorker } = await import("./jobs.js");
 startWorker();
+const { initPush, startPushWorker, stopPushWorker } = await import("./push.js");
+await initPush();
+startPushWorker();
+const { startBackups, stopBackups } = await import("./backups.js");
+startBackups();
 if (process.env.NODE_ENV !== "test" && process.env.IMPORT_REAL_VIDEOS !== "0") {
   import("../scripts/import-videos.js")
     .then((m) => m.importVideos())
@@ -30,5 +39,7 @@ for (const signal of ["SIGINT", "SIGTERM"])
     closing = true;
     server.close();
     await stopWorker();
+    await stopPushWorker();
+    await stopBackups();
     process.exit(0);
   });

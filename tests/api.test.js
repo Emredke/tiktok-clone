@@ -377,6 +377,7 @@ test("complete authenticated social flow and authorization", async (t) => {
       assert.ok(inbox.notifications.some((n) => n.type === "follow"));
       const message = (await b.get("/api/inbox")).body.messages[0];
       assert.equal(message.video_id, uploadId);
+      await b.post(`/api/chats/${aliceName}/accept`).send({}).expect(200);
       await b
         .post("/api/inbox/read")
         .send({ ids: [message.id] })

@@ -1,3 +1,4 @@
+import { SoundTools } from "./sounds.jsx";
 import React, { useState, useEffect } from "react";
 import { api } from "./api";
 import {
@@ -15,6 +16,7 @@ import {
 export function CreationTools({ defaults = {}, prefix = "" }) {
   return (
     <div className="editing-tools">
+      <SoundTools defaults={defaults} />
       <h3>Make it yours</h3>
       <div className="tool-grid">
         <label>
@@ -121,6 +123,10 @@ export function formOptions(form) {
   ])
     values[key] = form.has(key);
   for (const key of [
+    "original_volume",
+    "music_volume",
+    "voiceover_volume",
+    "voice_start",
     "start",
     "end",
     "thumbnail",
@@ -130,6 +136,9 @@ export function formOptions(form) {
     "overlay_end",
   ])
     if (values[key] !== undefined) values[key] = Number(values[key]);
+  if (values.audio_busy === "true")
+    throw new Error("Finish your voice recording before saving.");
+  delete values.audio_busy;
   delete values.video;
   return values;
 }
@@ -284,7 +293,29 @@ export function VideoExtras({ app, video: v, onClose }) {
           Watch the original video
         </button>
       )}
+      {v.audio_source && (
+        <div className="source-credit">
+          <strong>Sound: {v.audio_source.name}</strong>
+          <p>
+            By {v.audio_source.author} ·{" "}
+            <a
+              href={v.audio_source.license_url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {v.audio_source.license}
+            </a>
+          </p>
+        </div>
+      )}
       <div className="options-list">
+        <button
+          onClick={() =>
+            requireUser(() => app.setModal({ type: "collect", video: v }))
+          }
+        >
+          Add to collection or playlist
+        </button>
         {v.privacy === "public" && Boolean(v.allow_duet) && (
           <button
             onClick={() =>
@@ -459,9 +490,9 @@ function DraftEditor({ job, app, onDone }) {
   const o = job.options;
   const save = async (e) => {
     e.preventDefault();
-    const options = formOptions(new FormData(e.currentTarget));
-    options.mode = e.nativeEvent.submitter?.value || "draft";
     try {
+      const options = formOptions(new FormData(e.currentTarget));
+      options.mode = e.nativeEvent.submitter?.value || "draft";
       await api(`/jobs/${job.id}`, { ...o, ...options }, "PATCH");
       app.notify(
         options.mode === "publish" ? "Your video is queued." : "Draft saved.",

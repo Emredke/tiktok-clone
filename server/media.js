@@ -1,3 +1,4 @@
+import { mixAudio } from "./sounds.js";
 import { sourceAllowed } from "./policy.js";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { copyFile, readFile, writeFile, unlink } from "node:fs/promises";
@@ -238,6 +239,15 @@ export async function produce(path, id, o, progress, user) {
         ]);
       }
       final = composite;
+    }
+    if (
+      o.sound_id ||
+      o.voiceover_id ||
+      (o.original_volume !== undefined && o.original_volume !== 1)
+    ) {
+      const mixed = tmp("mixed.mp4");
+      await mixAudio(final, mixed, o, user, temporary);
+      final = mixed;
     }
     progress(50);
     const finalDuration = await probe(final),

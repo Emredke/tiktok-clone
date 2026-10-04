@@ -1,3 +1,5 @@
+import { checkAudio, audioCredit, sounds } from "./sounds.js";
+import { published } from "./social.js";
 import { sourceAllowed, collaborationCredit } from "./policy.js";
 import { randomUUID } from "node:crypto";
 import { mkdir, unlink } from "node:fs/promises";
@@ -9,6 +11,12 @@ import { produce, materialize } from "./media.js";
 export const optionsSchema = (categories) =>
   z
     .object({
+      sound_id: z.string().max(32).default(""),
+      voiceover_id: z.string().max(64).default(""),
+      original_volume: z.coerce.number().min(0).max(2).default(1),
+      music_volume: z.coerce.number().min(0).max(2).default(0.35),
+      voiceover_volume: z.coerce.number().min(0).max(2).default(1),
+      voice_start: z.coerce.number().min(0).max(179).default(0),
       caption: z.string().trim().min(1).max(1000),
       category: z.enum(categories),
       hashtags: z.string().max(350).default(""),
@@ -100,6 +108,7 @@ function tags(id, values) {
   }
 }
 export async function enqueue(path, user, o) {
+  checkAudio(o, user);
   // Probe untrusted media before retaining it. Encoding happens after the request ends.
   const rawDuration = await probe(path);
   if (o.end === undefined) o.end = rawDuration;
@@ -171,6 +180,7 @@ export function publicJob(j) {
   };
 }
 export function updateDraft(j, o) {
+  checkAudio(o, j.user_id);
   if (!["draft", "failed"].includes(j.status))
     throw Object.assign(
       new Error("Only drafts and failed uploads can be edited."),
@@ -296,6 +306,14 @@ export async function tick() {
         m.captionError,
         j.id,
       );
+      run(
+        "UPDATE videos SET audio=?,audio_source_json=? WHERE id=?",
+        sounds.find((s) => s.id === o.sound_id)?.name ||
+          (o.voiceover_id ? "Original voiceover" : "Original sound"),
+        audioCredit(o),
+        j.video_id,
+      );
+      if (o.privacy === "public") published(j.video_id, j.user_id);
     });
   } catch (e) {
     run(

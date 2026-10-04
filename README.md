@@ -50,7 +50,7 @@ All seeded creators are explicitly fictional. **Demo login is disabled in produc
 - Optimistic video likes and bookmarks, follows, comment/reply threads, comment likes, and author-only deletion.
 - Copy-link and browser/device sharing, shareable `/v/:id` URLs, in-app video messages.
 - Search by caption/category/hashtag/creator, trending tags, category filters, suggested creators, paginated results.
-- Database notifications for follows, video likes, comments, replies, comment likes; shared-video inbox and read state. Activity polls every 15 seconds on the inbox, with a 30-second navigation badge refresh.
+- Database notifications for follows, video likes, comments, replies, comment likes; shared-video inbox and read state. Live events refresh the navigation badge and conversations, with polling fallback.
 - MP4/MOV/WebM uploads, live upload progress, preview, duration trim, cover-frame selection, category, captions/hashtags, public/followers/private visibility, comments switch.
 - Browser camera recording when supported and permission is granted; graceful fallback to upload.
 - Reporting of videos, accounts, and comments; bilateral account blocking/unblocking; deletion of your own videos/comments.
@@ -60,6 +60,12 @@ All seeded creators are explicitly fictional. **Demo login is disabled in produc
 - Permission-controlled duets/remixes with original links and credit preservation.
 - Staff moderation queue, content removal, timed suspension/restoration, and audit history.
 - A credited, reproducibly imported collection of 300 openly licensed real videos.
+- Private watch history with saved playback position, pause, individual removal, and clear controls.
+- Named private collections and ordered public creator playlists with visibility and ownership checks.
+- Live text/video conversations, message requests, threaded replies, read receipts, per-chat mute, and privacy preferences.
+- Nine original CC0 music loops/effects, microphone or file voiceovers, and real rendered audio mixing with separate volume controls.
+- Optional browser push for messages, comments/replies, and followed creators' new uploads, device opt-out, topic controls, and quiet time.
+- Automatic verified daily SQLite backups, private S3 copies, checksum-checked restore, and a Render deployment Blueprint. See [LAUNCH.md](LAUNCH.md) for the account/domain setup and restore drill.
 
 ## Architecture
 

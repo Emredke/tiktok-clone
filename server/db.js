@@ -7,6 +7,9 @@ if (path !== ":memory:") mkdirSync(dirname(resolve(path)), { recursive: true });
 export const db = new DatabaseSync(path, { timeout: 5000 });
 db.exec(readFileSync(new URL("./schema.sql", import.meta.url), "utf8"));
 migrate(db);
+db.exec(
+  readFileSync(new URL("./community-schema.sql", import.meta.url), "utf8"),
+);
 export const all = (sql, ...args) => db.prepare(sql).all(...args);
 export const one = (sql, ...args) => db.prepare(sql).get(...args);
 export const run = (sql, ...args) => db.prepare(sql).run(...args);
